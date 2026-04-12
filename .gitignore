@@ -1,0 +1,4 @@
+.venv
+.venv311
+models_cache
+__pycache__

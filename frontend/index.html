@@ -1,0 +1,199 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>PolicyGuard AI — Compliance Assessment</title>
+  <meta name="description" content="AI-powered policy compliance assessment tool. Upload policy documents and analyse your application's compliance against control areas." />
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
+  <meta http-equiv="Pragma" content="no-cache" />
+  <meta http-equiv="Expires" content="0" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="style.css?v=5" />
+</head>
+<body>
+  <!-- ── Header ──────────────────────────────────────────────────────────── -->
+  <header class="header">
+    <div class="header-inner" style="justify-content: space-between; max-width: 1400px;">
+      
+      <div style="display: flex; align-items: center; gap: 20px;">
+        <nav class="tab-nav" role="tablist" style="margin: 0;">
+          <button class="tab-btn active" id="tab-database" role="tab" aria-selected="true" aria-controls="panel-database" onclick="switchTab('database')">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/></svg>
+            Database
+          </button>
+          <button class="tab-btn" id="tab-analyse" role="tab" aria-selected="false" aria-controls="panel-analyse" onclick="switchTab('analyse')">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>
+            Analyse
+          </button>
+        </nav>
+
+        <div style="width: 1px; height: 24px; background: var(--border);"></div>
+
+        <div class="collection-bar-left" style="flex: none; gap: 8px;">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color:var(--brand-400);flex-shrink:0"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/></svg>
+          <span class="collection-bar-label" style="margin-right: 2px;">Collection:</span>
+          <select class="collection-select" id="collectionSelect" onchange="onCollectionChange(this.value)" style="padding-top: 4px; padding-bottom: 4px; font-size: 13px;">
+            <option value="">Loading…</option>
+          </select>
+        </div>
+        
+        <div class="collection-bar-right">
+          <div class="new-collection-row" id="newCollectionRow" style="display: none; align-items: center; gap: 6px;">
+            <input
+              type="text"
+              id="newCollectionInput"
+              class="form-input new-collection-input"
+              placeholder="New collection name…"
+              maxlength="48"
+              onkeydown="if(event.key==='Enter') createNewCollection()"
+              style="width: 180px !important; padding: 4px 10px !important;"
+            />
+            <button class="btn btn-sm btn-outline" onclick="createNewCollection()">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+              Add
+            </button>
+            <button class="btn btn-sm btn-ghost" onclick="toggleNewCollection(false)" title="Cancel">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+            </button>
+          </div>
+          <button class="btn btn-sm btn-ghost" id="addCollectionBtn" onclick="toggleNewCollection(true)">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+            New
+          </button>
+        </div>
+      </div>
+
+      <div class="health-indicator" id="healthIndicator" title="System Health">
+        <div class="health-dot" id="healthDot"></div>
+        <span id="healthLabel">Checking…</span>
+      </div>
+    </div>
+  </header>
+
+  <!-- ── Main ─────────────────────────────────────────────────────────────── -->
+  <main class="main-content">
+
+    <!-- ══ DATABASE TAB ══════════════════════════════════════════════════════ -->
+    <section id="panel-database" class="tab-panel active" role="tabpanel" aria-labelledby="tab-database">
+
+      <!-- Upload zone -->
+      <div class="card upload-card">
+        <div class="upload-zone" id="uploadZone"
+             ondragover="handleDragOver(event)"
+             ondragleave="handleDragLeave(event)"
+             ondrop="handleDrop(event)"
+             onclick="document.getElementById('fileInput').click()">
+          <div class="upload-icon">
+            <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+              <polyline points="17 8 12 3 7 8"/>
+              <line x1="12" y1="3" x2="12" y2="15"/>
+            </svg>
+          </div>
+          <p class="upload-primary">Drop PDF files here or <span class="upload-link">browse</span></p>
+          <p class="upload-secondary">Supports multiple files · PDF format only · Ingests into active collection</p>
+          <input type="file" id="fileInput" accept=".pdf" multiple hidden onchange="handleFileSelect(event)" />
+        </div>
+
+        <div id="fileQueue" class="file-queue hidden"></div>
+
+        <div class="upload-actions">
+          <button class="btn btn-primary" id="storeBtn" onclick="storeDocuments()" disabled>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
+            Store Documents
+          </button>
+          <button class="btn btn-ghost" onclick="clearQueue()">Clear Queue</button>
+        </div>
+      </div>
+
+      <!-- Stored documents -->
+      <div class="card">
+        <div class="card-header-row">
+          <h2 class="card-title">Stored Documents</h2>
+          <button class="btn btn-sm btn-ghost" onclick="loadDocuments()">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+            Refresh
+          </button>
+        </div>
+        <div id="documentsContainer">
+          <div class="empty-state">
+            <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+            <p>No documents stored yet</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ══ ANALYSE TAB ═══════════════════════════════════════════════════════ -->
+    <section id="panel-analyse" class="tab-panel" role="tabpanel" aria-labelledby="tab-analyse">
+
+      <div class="analyse-layout">
+        <aside class="control-area-sidebar card">
+          <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px;">
+            <h2 class="card-title" style="margin-bottom: 0;">Control Areas</h2>
+            <div style="display: flex; align-items: center; gap: 6px;" title="Select all control areas">
+              <label for="selectAllCheckbox" style="font-size: 11px; font-weight: 600; text-transform: uppercase; color: var(--text-muted); cursor: pointer;">All</label>
+              <input type="checkbox" id="selectAllCheckbox" style="cursor: pointer; width: 14px; height: 14px; accent-color: var(--brand-500);" onclick="toggleAllControlAreas(this.checked)" />
+            </div>
+          </div>
+          <div id="controlAreaList" class="control-area-list"></div>
+          <div class="custom-area-section">
+            <label class="form-label" for="customAreaInput">Custom Control Area</label>
+            <div class="custom-area-input-row">
+              <input type="text" id="customAreaInput" class="form-input" placeholder="Enter custom area name…" maxlength="100" />
+              <button class="btn btn-sm btn-outline" onclick="addCustomArea()">Add</button>
+            </div>
+          </div>
+        </aside>
+
+        <!-- Right: Fields + analysis -->
+        <div class="analyse-main">
+          <div id="resultsSection" class="results-section hidden" style="margin-top: 0; margin-bottom: 20px;">
+            <div class="card-header-row results-header">
+              <h2 class="card-title">Analysis Results</h2>
+              <div class="results-summary" id="resultsSummary"></div>
+            </div>
+            <div id="resultsContainer"></div>
+          </div>
+
+          <div class="card" id="fieldsCard">
+            <div class="card-header-row">
+              <h2 class="card-title">Analysis Fields</h2>
+              <span class="field-count-badge" id="fieldCountBadge">0 fields</span>
+            </div>
+            <div id="fieldsContainer">
+              <div class="empty-state" id="fieldsEmptyState">
+                <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><line x1="9" y1="9" x2="15" y2="9"/><line x1="9" y1="12" x2="15" y2="12"/><line x1="9" y1="15" x2="12" y2="15"/></svg>
+                <p>Select control areas from the left panel to begin</p>
+              </div>
+            </div>
+            <div class="analyse-actions" id="analyseActions" style="display:none">
+              <button class="btn btn-primary btn-lg" id="analyseBtn" onclick="runAnalysis()">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+                Run Compliance Analysis
+              </button>
+              <button class="btn btn-ghost" onclick="clearAllFields()">Clear All</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <div id="toastContainer" class="toast-container" aria-live="polite"></div>
+
+  <div id="loadingOverlay" class="loading-overlay hidden">
+    <div class="loading-modal">
+      <div class="spinner-ring"></div>
+      <p class="loading-text" id="loadingText">Processing…</p>
+      <p class="loading-sub" id="loadingSub"></p>
+    </div>
+  </div>
+
+  <script src="app.js?v=5"></script>
+</body>
+</html>
