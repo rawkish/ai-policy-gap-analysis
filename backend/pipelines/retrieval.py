@@ -26,15 +26,15 @@ _INJECTION_RE = re.compile("|".join(_INJECTION_PATTERNS), re.IGNORECASE)
 
 MAX_DESCRIPTION_LENGTH = 3000
 
-# ─── Layer 2: canary distance threshold ──────────────────────────────────────
-# Cosine distance range: 0 = identical, 2 = maximally dissimilar.
-# Adversarial inputs that closely mirror the canary text → distance < 0.35.
-# Legitimate queries that incidentally surface the canary → distance ≥ 0.50.
-# Threshold of 0.40 gives comfortable headroom on both sides.
+
+
+
+
+
 CANARY_DISTANCE_THRESHOLD: float = 0.40
 
 
-# ─── Public API ───────────────────────────────────────────────────────────────
+
 
 def sanitize_input(text: str) -> tuple[str, bool]:
     """
@@ -70,7 +70,7 @@ def retrieve_policy(
     if top_k is None:
         top_k = settings.top_k
 
-    # Fetch one extra slot so the canary can appear without displacing results
+    
     query_vector = embed_query(query)
     hits = vector_search(query_vector, collection_name=collection_name, top_k=top_k + 1)
 
@@ -93,7 +93,7 @@ def retrieve_policy(
                     "treating as benign retrieval noise.",
                     distance, CANARY_DISTANCE_THRESHOLD,
                 )
-            # Either way don't include the canary chunk in the results
+            
         else:
             clean_hits.append(hit)
 

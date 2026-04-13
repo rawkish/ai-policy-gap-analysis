@@ -39,7 +39,7 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# ─── Lifespan ─────────────────────────────────────────────────────────────────
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -50,7 +50,7 @@ async def lifespan(app: FastAPI):
     Shutdown:
       Close the Weaviate client connection.
     """
-    # ── Startup ──────────────────────────────────────────────────────────────
+    
     logger.info("=== Startup: ensuring default collection '%s' ===", settings.default_collection)
     try:
         newly_created = ensure_collection(settings.default_collection)
@@ -78,13 +78,13 @@ async def lifespan(app: FastAPI):
     elif not os.path.isfile(sample_path):
         logger.warning("Sample PDF not found at %s — skipping auto-ingest.", sample_path)
 
-    yield   # ← application runs here
+    yield   
 
-    # ── Shutdown ─────────────────────────────────────────────────────────────
+    
     close_client()
 
 
-# ─── App ──────────────────────────────────────────────────────────────────────
+
 
 app = FastAPI(
     title="AI Policy Compliance Assessment",
@@ -100,7 +100,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# ─── Predefined Control Areas ─────────────────────────────────────────────────
+
 
 CONTROL_AREAS: list[ControlArea] = [
     ControlArea(
@@ -181,7 +181,7 @@ CONTROL_AREAS: list[ControlArea] = [
     ),
 ]
 
-# ─── Routes — Health ──────────────────────────────────────────────────────────
+
 
 @app.get("/api/health", response_model=HealthResponse, tags=["Health"])
 async def health():
@@ -195,7 +195,7 @@ async def health():
     return HealthResponse(overall=overall, services=services)
 
 
-# ─── Routes — Collections ─────────────────────────────────────────────────────
+
 
 @app.get("/api/collections", response_model=CollectionsResponse, tags=["Collections"])
 async def get_collections():
@@ -214,14 +214,14 @@ async def post_create_collection(body: CreateCollectionRequest):
         raise HTTPException(status_code=400, detail=str(exc))
 
 
-# ─── Routes — Control Areas ───────────────────────────────────────────────────
+
 
 @app.get("/api/control-areas", response_model=ControlAreasResponse, tags=["Control Areas"])
 async def get_control_areas():
     return ControlAreasResponse(control_areas=CONTROL_AREAS)
 
 
-# ─── Routes — Ingestion ───────────────────────────────────────────────────────
+
 
 @app.post("/api/ingest", response_model=list[IngestResponse], tags=["Ingestion"])
 async def ingest_documents(
@@ -256,7 +256,7 @@ async def ingest_documents(
     return results
 
 
-# ─── Routes — Documents ───────────────────────────────────────────────────────
+
 
 @app.get("/api/documents", response_model=DocumentsResponse, tags=["Documents"])
 async def get_documents(collection_name: str = Query(...)):
@@ -272,7 +272,7 @@ async def remove_document(filename: str, collection_name: str = Query(...)):
     return {"filename": filename, "chunks_deleted": deleted}
 
 
-# ─── Routes — Analysis ───────────────────────────────────────────────────────
+
 
 @app.post("/api/analyse", response_model=AnalyseResponse, tags=["Analysis"])
 async def analyse(request: AnalyseRequest):
@@ -283,10 +283,10 @@ async def analyse(request: AnalyseRequest):
     return AnalyseResponse(results=results)
 
 
-# ─── Serve frontend ───────────────────────────────────────────────────────────
-# Mount the entire frontend directory at root AFTER all API routes.
-# html=True makes FastAPI serve index.html for "/" automatically,
-# and all relative assets (style.css, app.js) resolve correctly.
+
+
+
+
 
 FRONTEND_DIR = os.path.join(os.path.dirname(__file__), "..", "frontend")
 
@@ -294,7 +294,7 @@ if os.path.isdir(FRONTEND_DIR):
     app.mount("/", StaticFiles(directory=FRONTEND_DIR, html=True), name="frontend")
 
 
-# ─── Dev entry ────────────────────────────────────────────────────────────────
+
 
 if __name__ == "__main__":
     import uvicorn

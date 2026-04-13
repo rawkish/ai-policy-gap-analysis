@@ -52,7 +52,7 @@ Respond ONLY with a JSON object using this EXACT structure (no extra keys, no ma
 }}
 """
 
-# Valid status values — used for normalisation
+
 _VALID_STATUSES = {"Compliant", "Partially Implemented", "Gap Identified"}
 
 
@@ -70,20 +70,20 @@ def build_prompt(control_area: str, description: str, policy_chunks: list[dict])
 
 def _extract_json(text: str) -> dict:
     """Extract JSON from LLM output even if it contains surrounding prose."""
-    # Try direct parse first
+    
     try:
         return json.loads(text.strip())
     except json.JSONDecodeError:
         pass
 
-    # Strip markdown code fences if present
+    
     cleaned = re.sub(r"```(?:json)?", "", text).strip()
     try:
         return json.loads(cleaned)
     except json.JSONDecodeError:
         pass
 
-    # Find the outermost { ... } block
+    
     match = re.search(r"\{.*\}", text, re.DOTALL)
     if match:
         try:
@@ -111,11 +111,11 @@ def _normalise_status(raw: str) -> str:
     if "gap" in raw_lower or "not" in raw_lower or "non" in raw_lower:
         return "Gap Identified"
 
-    # If the raw value is already exact, return it
+    
     if raw.strip() in _VALID_STATUSES:
         return raw.strip()
 
-    # Fallback
+    
     return "Gap Identified"
 
 
@@ -157,7 +157,7 @@ def analyse_compliance(
             status = _normalise_status(str(result.get("status", "")))
             gap_detail = result.get("gap_detail")
 
-            # Ensure gap_detail is None (not null string / "null") when Compliant
+            
             if status == "Compliant" or not gap_detail or str(gap_detail).lower() in ("null", "none", ""):
                 gap_detail = None
 

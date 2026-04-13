@@ -27,7 +27,7 @@ async def run_analysis(
     for field in fields:
         logger.info("Analysing field '%s' against collection '%s'", field.control_area_name, collection_name)
 
-        # Step 1: sanitize
+        
         clean_desc, input_injected = sanitize_input(field.description)
 
         if input_injected:
@@ -81,7 +81,7 @@ async def run_analysis(
             ))
             continue
 
-        # Step 3: LLM analysis
+        
         try:
             llm_result = analyse_compliance(
                 control_area=field.control_area_name,

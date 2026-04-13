@@ -6,7 +6,7 @@ from typing import Literal, Optional
 from pydantic import BaseModel, Field
 
 
-# ─── Ingest ───────────────────────────────────────────────────────────────────
+
 
 class IngestResponse(BaseModel):
     filename: str
@@ -15,7 +15,7 @@ class IngestResponse(BaseModel):
     message: str = ""
 
 
-# ─── Documents ────────────────────────────────────────────────────────────────
+
 
 class DocumentInfo(BaseModel):
     filename: str
@@ -27,7 +27,7 @@ class DocumentsResponse(BaseModel):
     documents: list[DocumentInfo]
 
 
-# ─── Collections ──────────────────────────────────────────────────────────────
+
 
 class CollectionInfo(BaseModel):
     name: str
@@ -47,7 +47,7 @@ class CreateCollectionResponse(BaseModel):
     created: bool
 
 
-# ─── Control Areas ────────────────────────────────────────────────────────────
+
 
 class ControlArea(BaseModel):
     id: str
@@ -61,7 +61,7 @@ class ControlAreasResponse(BaseModel):
     control_areas: list[ControlArea]
 
 
-# ─── Analysis Request ─────────────────────────────────────────────────────────
+
 
 class FieldInput(BaseModel):
     control_area_id: str
@@ -74,10 +74,10 @@ class AnalyseRequest(BaseModel):
     collection_name: str = Field(..., min_length=1)
 
 
-# ─── Analysis Response ────────────────────────────────────────────────────────
 
-# The three possible status values — must match exactly what the LLM is
-# instructed to return and what the frontend renders.
+
+
+
 StatusLiteral = Literal[
     "Compliant",
     "Partially Implemented",
@@ -90,8 +90,8 @@ class ComplianceResult(BaseModel):
     control_area_name: str
     status: StatusLiteral
     summary: str
-    gap_detail: Optional[str] = None          # only when status != Compliant
-    policy_reference: list[str] = []          # specific policy requirement(s) cited
+    gap_detail: Optional[str] = None          
+    policy_reference: list[str] = []          
     injection_detected: bool = False
     error: Optional[str] = None
 
@@ -100,7 +100,7 @@ class AnalyseResponse(BaseModel):
     results: list[ComplianceResult]
 
 
-# ─── Health ───────────────────────────────────────────────────────────────────
+
 
 class ServiceStatus(BaseModel):
     name: str

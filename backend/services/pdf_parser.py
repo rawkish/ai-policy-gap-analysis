@@ -22,12 +22,12 @@ from typing import Optional
 class Chunk:
     text: str
     heading: str
-    heading_level: int        # 0 = no heading, 1 = H1, 2 = H2, 3 = H3
+    heading_level: int        
     chunk_index: int
     source_file: str
 
 
-# ─── Helpers ──────────────────────────────────────────────────────────────────
+
 
 def _clean(text: str) -> str:
     return re.sub(r"\s+", " ", text).strip()
@@ -59,7 +59,7 @@ def _compute_thresholds(sizes: list[float]) -> dict:
     h2 = eligible[int(n * 0.75)]
     h3 = eligible[int(n * 0.60)]
 
-    # Ensure strict ordering with minimum 1pt gap
+    
     h1 = max(h1, 14.0)
     h2 = min(h2, h1 - 1.0)
     h3 = min(h3, h2 - 1.0)
@@ -76,20 +76,20 @@ def _classify_level(size: float, thresholds: dict) -> int:
     return 0
 
 
-# ─── Main parser ──────────────────────────────────────────────────────────────
+
 
 def parse_pdf(filepath: str, source_file: str, max_chars: int = 2000) -> list[Chunk]:
     """
     Parse a PDF and return a list of structured Chunk objects.
     Falls back to plain text chunking if no structure is detected.
     """
-    raw_lines: list[dict] = []   # {"text": str, "size": float}
+    raw_lines: list[dict] = []   
     all_sizes: list[float] = []
 
     try:
         with pdfplumber.open(filepath) as pdf:
             for page in pdf.pages:
-                # Extract lines with avg font size from character data
+                
                 page_lines = _extract_lines_with_sizes(page)
                 for ln in page_lines:
                     if ln["text"]:
@@ -104,8 +104,8 @@ def parse_pdf(filepath: str, source_file: str, max_chars: int = 2000) -> list[Ch
 
     thresholds = _compute_thresholds(all_sizes)
 
-    # ── Classify lines and merge into logical blocks ──────────────────────────
-    merged: list[dict] = []   # {"level": int, "text": str}
+    
+    merged: list[dict] = []   
 
     for ln in raw_lines:
         level = _classify_level(ln["size"] or 0.0, thresholds)
@@ -114,7 +114,7 @@ def parse_pdf(filepath: str, source_file: str, max_chars: int = 2000) -> list[Ch
         else:
             merged.append({"level": level, "text": ln["text"]})
 
-    # ── Build chunks from heading sections ────────────────────────────────────
+    
     chunks: list[Chunk] = []
     chunk_index = 0
     heading_stack: list[tuple[int, str]] = []
@@ -146,7 +146,7 @@ def parse_pdf(filepath: str, source_file: str, max_chars: int = 2000) -> list[Ch
         text = block["text"]
 
         if level == 0:
-            if len(text) > 30:   # skip very short spans (page numbers, etc.)
+            if len(text) > 30:   
                 current_body.append(text)
         else:
             flush_body()
@@ -156,7 +156,7 @@ def parse_pdf(filepath: str, source_file: str, max_chars: int = 2000) -> list[Ch
 
     flush_body()
 
-    # ── Fallback: if structure detection produced nothing, use raw text ────────
+    
     if not chunks:
         full_text = _clean(" ".join(ln["text"] for ln in raw_lines))
         for i, segment in enumerate(_sliding_split(full_text, max_chars=max_chars)):
@@ -171,7 +171,7 @@ def parse_pdf(filepath: str, source_file: str, max_chars: int = 2000) -> list[Ch
     return chunks
 
 
-# ─── Line extraction helper ───────────────────────────────────────────────────
+
 
 def _extract_lines_with_sizes(page) -> list[dict]:
     """
@@ -190,18 +190,18 @@ def _extract_lines_with_sizes(page) -> list[dict]:
             extra_attrs=["size"],
         )
     except Exception:
-        # Fallback: plain text per page, no size info
+        
         text = page.extract_text() or ""
         for line in text.splitlines():
             line = _clean(line)
             if line:
-                lines.append({"text": line, "size": 12.0})   # default body size
+                lines.append({"text": line, "size": 12.0})   
         return lines
 
     if not words:
         return lines
 
-    # Group words into lines by their top-y coordinate (within 3pt tolerance)
+    
     current_y: Optional[float] = None
     current_words: list[dict] = []
 

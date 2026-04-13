@@ -49,6 +49,7 @@ we use `llama3.2:3b` - approx 2GB
 ```bash
 docker exec -it ollama ollama pull llama3.2:3b
 ```
+Do this only once.
 
 ### Step 3: Start the Backend
 Navigate to the `backend/` folder, install dependencies, and run the server
@@ -64,21 +65,7 @@ http://localhost:8000
 
 ---
 
-### Example Testing Data
 
-Below are sample inputs for the 7 primary control areas you can use to test the compliance engine. They vary from fully compliant to having critical gaps relative to standard security policies (referencing `security-control-policy.pdf` expectations).
-
-| Control Area | Sample User Description (Input) | Expected Assessment |
-| --- | --- | --- |
-| Data Encryption | "All databases, including backups, are encrypted using AES-256 at rest. All data in transit uses TLS 1.3 only." | Compliant |
-| Access Control | "Staff log in using basic username and password. We plan to implement MFA next quarter, but currently, only standard passwords are used." | Gap Found (Missing MFA requirement) |
-| Audit Logging | "We collect access logs for all primary servers and retain them for 30 days locally on the disk." | Partial Implementation (Logs likely need central aggregation or longer retention) |
-| Incident Response | "We have a documented Incident Response plan that was finalized last year, but we have not performed tabletop exercises or simulations yet." | Partial Implementation (Missing testing requirement) |
-| Data Deletion | "Users have an automated 'Delete Account' button in the UI. When clicked, all PII and database records are hard-deleted instantly across all systems." | Compliant |
-| Third-Party Access | "Our server vendors have unrestricted VPN connections directly to the production subnet so they can perform maintenance anytime." | Gap Found (Violates principal of least privilege) |
-| Network Security | "Our applications sit behind an edge WAF and load balancer. Internal components communicate via restricted VPC security groups on necessary ports only." | Compliant |
-
----
 
 ## Future Improvements 
 
