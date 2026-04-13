@@ -27,6 +27,7 @@ Navigate to the `backend/` folder, install dependencies, and run the server
 ```bash
 cd backend
 uv sync
+.venv/Scripts/activate
 python main.py
 ```
 
