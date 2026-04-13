@@ -4,6 +4,7 @@ Every collection gets identical properties + an injection-detection canary chunk
 Uses weaviate-client v4.x (synchronous API).
 """
 from __future__ import annotations
+import re
 import uuid
 import logging
 from datetime import datetime, timezone
@@ -96,22 +97,27 @@ def create_collection(collection_name: str) -> dict:
     """
     Public API: create a new collection.
     Raises ValueError if the name is invalid or already exists.
+    Returns {"name": <normalised>, "original": <user input>, "created": True}
     """
-    name = collection_name.strip()
-    if not name:
+    original = collection_name.strip()
+    if not original:
         raise ValueError("Collection name cannot be empty.")
-    
-    if not name[0].isupper():
-        name = name[0].upper() + name[1:]
-    
-    name = name.replace(" ", "").replace("-", "").replace("_", "")
+
+    # Normalise to PascalCase — preserves word boundaries from spaces/hyphens/underscores
+    # e.g. "my policy" → "MyPolicy",  "ISO-27001" → "Iso27001"
+    parts = re.split(r"[\s\-_]+", original)
+    name = "".join(part.capitalize() for part in parts if part)
+
+    # Weaviate requires names to start with an uppercase letter
+    if not name or not name[0].isupper():
+        raise ValueError(f"Collection name '{original}' produced an invalid identifier.")
 
     client = get_client()
     if client.collections.exists(name):
         raise ValueError(f"Collection '{name}' already exists.")
 
     ensure_collection(name)
-    return {"name": name, "created": True}
+    return {"name": name, "original": original, "created": True}
 
 
 def list_collections() -> list[str]:

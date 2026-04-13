@@ -11,7 +11,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="style.css?v=5" />
+  <link rel="stylesheet" href="style.css?v=7" />
 </head>
 <body>
   <!-- ── Header ──────────────────────────────────────────────────────────── -->
@@ -41,24 +41,6 @@
         </div>
         
         <div class="collection-bar-right">
-          <div class="new-collection-row" id="newCollectionRow" style="display: none; align-items: center; gap: 6px;">
-            <input
-              type="text"
-              id="newCollectionInput"
-              class="form-input new-collection-input"
-              placeholder="New collection name…"
-              maxlength="48"
-              onkeydown="if(event.key==='Enter') createNewCollection()"
-              style="width: 180px !important; padding: 4px 10px !important;"
-            />
-            <button class="btn btn-sm btn-outline" onclick="createNewCollection()">
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-              Add
-            </button>
-            <button class="btn btn-sm btn-ghost" onclick="toggleNewCollection(false)" title="Cancel">
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-            </button>
-          </div>
           <button class="btn btn-sm btn-ghost" id="addCollectionBtn" onclick="toggleNewCollection(true)">
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
             New
@@ -186,6 +168,39 @@
 
   <div id="toastContainer" class="toast-container" aria-live="polite"></div>
 
+  <!-- ── New Collection Modal ──────────────────────────────────────────────── -->
+  <div id="newCollectionModal" class="nc-backdrop" onclick="handleBackdropClick(event)" style="display:none">
+    <div class="nc-modal" role="dialog" aria-modal="true" aria-labelledby="ncModalTitle">
+      <div class="nc-modal-header">
+        <div class="nc-modal-icon">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/></svg>
+        </div>
+        <h3 class="nc-modal-title" id="ncModalTitle">New Collection</h3>
+        <button class="nc-close-btn" onclick="toggleNewCollection(false)" title="Cancel">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
+      </div>
+      <p class="nc-modal-hint">Names are normalised to PascalCase. Spaces and hyphens become word boundaries.</p>
+      <input
+        type="text"
+        id="newCollectionInput"
+        class="form-input nc-input"
+        placeholder="e.g. ISO Policy, gdpr-controls, HR Documents…"
+        maxlength="48"
+        onkeydown="if(event.key==='Enter') createNewCollection(); if(event.key==='Escape') toggleNewCollection(false);"
+        autocomplete="off"
+        spellcheck="false"
+      />
+      <div class="nc-modal-actions">
+        <button class="btn btn-ghost" onclick="toggleNewCollection(false)">Cancel</button>
+        <button class="btn btn-primary" onclick="createNewCollection()" id="ncCreateBtn">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+          Create Collection
+        </button>
+      </div>
+    </div>
+  </div>
+
   <div id="loadingOverlay" class="loading-overlay hidden">
     <div class="loading-modal">
       <div class="spinner-ring"></div>
@@ -194,6 +209,6 @@
     </div>
   </div>
 
-  <script src="app.js?v=5"></script>
+  <script src="app.js?v=6"></script>
 </body>
 </html>

@@ -2,7 +2,6 @@
 
 An AI-powered tool designed to systematically assess whether your application's architecture and control area descriptions comply with the organization's formal policy documents.
 
----
 
 ## How to Install and Run Locally
 
@@ -34,8 +33,9 @@ python main.py
 ### Step 4: Open the Application
 Click below
 http://localhost:8000
+Upload a policy document in the Database tab.
+Switch to the Analysis tab, select/create control areas, and get compliance assessment!
 
----
 
 ## Architecture
 
@@ -52,7 +52,6 @@ When a user uploads a policy PDF ( `security-control-policy.pdf`):
 3. Embedding: Before being saved, each chunk is embedded using the local `sentence-transformers/all-MiniLM-L6-v2` embedding model (a fast, lightweight 384-dimensional vector generator).
 4. Storage: The vector embeddings and raw chunk texts are ingested into Weaviate under a user-defined collection.
 
----
 
 ## Security Guardrails (Prompt Injection Defense)
 
@@ -63,7 +62,15 @@ Because the system relies on an LLM analyzing user input, it features a dual-lay
 2. Semantic Canary Block (Vector Injection Check): 
    The system deliberately ingests a "Canary" or "HoneyPot" chunk into the vector database. If a user tries to employ an adversarial attack using complex semantic phrasing that bypasses regex, the semantic similarity search will retrieve the Canary chunk. The backend detects this specific chunk in the retrieval array and inherently blocks the prompt from ever reaching the LLM. 
 
----
+
+## Features:
+
+- Create multiple collections in Weaviate for different policy documents. Switch between collections to analyze different policies without re-ingestion all from the webapp.
+- Create custom control areas and get compliance assessment for each area separately. Flexibility to analyze specific control areas of the application architecture against the policy. Good User Experience.
+- Detailed compliance assessment with specific references to the policy document sections that are relevant to each control area. The LLM provides a comprehensive analysis of how well the control area aligns with the policy requirements, citing specific sections and providing actionable feedback for improvement.
+- Intuitive prompt injection detection and mitigation strategies to ensure the integrity of the LLM analysis.
+- Accurate rerieval of relevant policy sections using semantic similarity search, ensuring the LLM has the necessary context to provide a thorough compliance assessment.
+- Accurate analysis of the control area descriptions against the policy requirements, providing specific feedback on compliance gaps and areas for improvement.
 
 ## Future Improvements 
 

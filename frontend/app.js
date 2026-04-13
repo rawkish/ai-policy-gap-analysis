@@ -109,17 +109,19 @@ async function loadCollections() {
     select.innerHTML = data.collections.length === 0
       ? '<option value="">No collections yet</option>'
       : data.collections.map(c =>
-          `<option value="${escHtml(c)}" ${c === data.default ? 'selected' : ''}>${escHtml(c)}</option>`
+          `<option value="${escHtml(c)}">${escHtml(c)}</option>`
         ).join('');
 
-    // Set active collection to the default (or first available)
-    if (!state.activeCollection) {
-      state.activeCollection = data.default || data.collections[0] || '';
-    }
-    // Make sure select reflects the stored state
-    if (state.activeCollection) select.value = state.activeCollection;
+    // Prefer the currently active collection if it still exists in the list,
+    // otherwise fall back to the server's default, then the first in the list.
+    const preferred = state.activeCollection && data.collections.includes(state.activeCollection)
+      ? state.activeCollection
+      : (data.default || data.collections[0] || '');
 
-    // Now load documents for the active collection
+    state.activeCollection = preferred;
+    if (preferred) select.value = preferred;
+
+    // Load documents for whichever collection is now active
     await loadDocuments();
   } catch (err) {
     showToast('Failed to load collections.', 'error');
@@ -137,16 +139,31 @@ function onCollectionChange(value) {
 }
 
 function toggleNewCollection(show) {
-  const row = document.getElementById('newCollectionRow');
-  const btn = document.getElementById('addCollectionBtn');
+  const modal = document.getElementById('newCollectionModal');
   if (show) {
-    row.classList.add('visible');
-    btn.style.display = 'none';
-    document.getElementById('newCollectionInput').focus();
+    modal.style.display = 'flex';
+    // Small delay so the browser paints the modal before focusing
+    setTimeout(() => {
+      const input = document.getElementById('newCollectionInput');
+      if (input) { input.value = ''; input.focus(); }
+    }, 50);
   } else {
-    row.classList.remove('visible');
-    btn.style.display = '';
-    document.getElementById('newCollectionInput').value = '';
+    modal.style.display = 'none';
+    const input = document.getElementById('newCollectionInput');
+    if (input) input.value = '';
+    // Reset create button label (textContent would strip the SVG icon)
+    const btn = document.getElementById('ncCreateBtn');
+    if (btn) {
+      btn.disabled = false;
+      btn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg> Create Collection';
+    }
+  }
+}
+
+function handleBackdropClick(e) {
+  // Dismiss only when clicking the backdrop itself, not the modal box
+  if (e.target === document.getElementById('newCollectionModal')) {
+    toggleNewCollection(false);
   }
 }
 
@@ -155,6 +172,9 @@ async function createNewCollection() {
   const name = input.value.trim();
   if (!name) { showToast('Please enter a collection name.', 'warning'); return; }
 
+  const createBtn = document.getElementById('ncCreateBtn');
+  if (createBtn) { createBtn.disabled = true; createBtn.textContent = 'Creating…'; }
+
   try {
     const data = await apiFetch('/collections', {
       method: 'POST',
@@ -162,18 +182,26 @@ async function createNewCollection() {
       body: JSON.stringify({ name }),
     });
 
-    showToast(`Collection "${data.name}" created.`, 'success');
-    toggleNewCollection(false);
-
-    // Reload the collection list and switch to the new one
-    await loadCollections();
-    const select = document.getElementById('collectionSelect');
-    select.value = data.name;
+    // Set the active collection BEFORE reloading the list so loadCollections
+    // picks it up and selects it in the dropdown automatically
     state.activeCollection = data.name;
-    await loadDocuments();
+    toggleNewCollection(false);   // closes modal + resets button
+
+    const msg = data.original && data.original !== data.name
+      ? `Collection created as "${data.name}" (normalised from "${data.original}")`
+      : `Collection "${data.name}" created successfully.`;
+    showToast(msg, 'success');
+
+    // Reload list — will auto-select state.activeCollection and load its docs
+    await loadCollections();
 
   } catch (err) {
     showToast(`Failed to create collection: ${err.message}`, 'error');
+    // Re-enable the button on failure so user can try again
+    if (createBtn) {
+      createBtn.disabled = false;
+      createBtn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg> Create Collection';
+    }
   }
 }
 
