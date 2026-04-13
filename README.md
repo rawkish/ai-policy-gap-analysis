@@ -1,34 +1,6 @@
-# PolicyGuard AI — Policy Compliance Assessment System
+# Policy Gap Analysis System
 
-An AI-powered tool designed to systematically assess whether your application's architecture and control area descriptions comply with your organization's formal policy documents.
-
----
-
-## Architecture
-
-- Backend: Built 3 separate pipelines for PDF ingestion, vector storage retrieval, and LLM-based compliance assessment.
-- Backend API: Python 3.12+ using FastAPI for high-performance async processing.
-- Vector Store: Weaviate locally hosted via Docker. Used to store embedded policy document chunks and performing semantic similarity search.
-- LLM Engine: Ollama locally hosted via Docker. We use the `llama3.2:3b`.
-- Frontend: HTML, CSS, and JS(used AI). Communicates with the backend REST API.
-
-### How PDF Data is Embedded
-When a user uploads a policy PDF ( `security-control-policy.pdf`):
-1. Extraction: The `pdfplumber` library extracts raw text from the document, preserving basic structure.
-2. Chunking: The backend splits the raw text into manageable, overlapping chunks based on the structure of the pdf to avoid exceeding the LLM context window.
-3. Embedding: Before being saved, each chunk is embedded using the local `sentence-transformers/all-MiniLM-L6-v2` embedding model (a fast, lightweight 384-dimensional vector generator).
-4. Storage: The vector embeddings and raw chunk texts are ingested into Weaviate under a user-defined collection.
-
----
-
-## Security Guardrails (Prompt Injection Defense)
-
-Because the system relies on an LLM analyzing user input, it features a dual-layer prompt injection guardrail mechanism:
-
-1. Input Sanitization ( Regex): 
-   Before any processing begins, the user's control area description is scanned against a set of regex patterns covering known adversarial inputs (e.g., `"ignore previous instructions"`, `"system prompt"`, `"you are now"`). If caught, the pipeline safely blocks the request immediately.
-2. Semantic Canary Block (Vector Injection Check): 
-   The system deliberately ingests a "Canary" or "HoneyPot" chunk into the vector database. If a user tries to employ an adversarial attack using complex semantic phrasing that bypasses regex, the semantic similarity search will retrieve the Canary chunk. The backend detects this specific chunk in the retrieval array and inherently blocks the prompt from ever reaching the LLM. 
+An AI-powered tool designed to systematically assess whether your application's architecture and control area descriptions comply with the organization's formal policy documents.
 
 ---
 
@@ -65,7 +37,33 @@ http://localhost:8000
 
 ---
 
+## Architecture
 
+- Backend: Built 3 separate pipelines for PDF ingestion, vector storage retrieval, and LLM-based compliance assessment.
+- Backend API: Python 3.12+ using FastAPI for high-performance async processing.
+- Vector Store: Weaviate locally hosted via Docker. Used to store embedded policy document chunks and performing semantic similarity search.
+- LLM Engine: Ollama locally hosted via Docker. We use the `llama3.2:3b`.
+- Frontend: HTML, CSS, and JS(used AI). Communicates with the backend REST API.
+
+### How PDF Data is Embedded
+When a user uploads a policy PDF ( `security-control-policy.pdf`):
+1. Extraction: The `pdfplumber` library extracts raw text from the document, preserving basic structure.
+2. Chunking: The backend splits the raw text into manageable, overlapping chunks based on the structure of the pdf to avoid exceeding the LLM context window.
+3. Embedding: Before being saved, each chunk is embedded using the local `sentence-transformers/all-MiniLM-L6-v2` embedding model (a fast, lightweight 384-dimensional vector generator).
+4. Storage: The vector embeddings and raw chunk texts are ingested into Weaviate under a user-defined collection.
+
+---
+
+## Security Guardrails (Prompt Injection Defense)
+
+Because the system relies on an LLM analyzing user input, it features a dual-layer prompt injection guardrail mechanism:
+
+1. Input Sanitization ( Regex): 
+   Before any processing begins, the user's control area description is scanned against a set of regex patterns covering known adversarial inputs (e.g., `"ignore previous instructions"`, `"system prompt"`, `"you are now"`). If caught, the pipeline safely blocks the request immediately.
+2. Semantic Canary Block (Vector Injection Check): 
+   The system deliberately ingests a "Canary" or "HoneyPot" chunk into the vector database. If a user tries to employ an adversarial attack using complex semantic phrasing that bypasses regex, the semantic similarity search will retrieve the Canary chunk. The backend detects this specific chunk in the retrieval array and inherently blocks the prompt from ever reaching the LLM. 
+
+---
 
 ## Future Improvements 
 
