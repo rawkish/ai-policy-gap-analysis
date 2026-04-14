@@ -5,7 +5,7 @@ Now accepts collection_name to query the correct Weaviate collection.
 from __future__ import annotations
 import logging
 from models.schemas import FieldInput, ComplianceResult
-from pipelines.retrieval import sanitize_input, retrieve_policy
+from pipelines.retrieval import sanitize_input, retrieve_policy, check_canary_proximity
 from services.llm_client import analyse_compliance
 
 logger = logging.getLogger(__name__)
@@ -17,18 +17,20 @@ async def run_analysis(
 ) -> list[ComplianceResult]:
     """
     Process each control-area field against the given collection:
-    1. Sanitize input
-    2. Retrieve policy chunks (with injection guard)
-    3. Call LLM
-    4. Return structured ComplianceResult
+    1. Sanitize input (regex)
+    2. Canary proximity check on RAW description (no control-area prefix)
+    3. Retrieve policy chunks (with secondary canary guard)
+    4. Call LLM
+    5. Return structured ComplianceResult
     """
     results: list[ComplianceResult] = []
 
     for field in fields:
         logger.info("Analysing field '%s' against collection '%s'", field.control_area_name, collection_name)
 
+        input_text = field.control_area_name + field.description
         
-        clean_desc, input_injected = sanitize_input(field.description)
+        clean_desc, input_injected = sanitize_input(input_text)
 
         if input_injected:
             results.append(ComplianceResult(
@@ -41,6 +43,27 @@ async def run_analysis(
             ))
             continue
 
+        
+        try:
+            canary_injected, strategies = check_canary_proximity(
+                clean_desc, collection_name
+            )
+        except Exception as exc:
+            logger.exception("Canary proximity check failed: %s", exc)
+            canary_injected = False
+
+        if canary_injected:
+            results.append(ComplianceResult(
+                control_area_id=field.control_area_id,
+                control_area_name=field.control_area_name,
+                status="Gap Identified",
+                summary="Analysis blocked — prompt injection detected via canary proximity check.",
+                gap_detail=f"The input triggered {len(strategies)} canary strateg{'y' if len(strategies)==1 else 'ies'}: {', '.join(strategies)}.",
+                injection_detected=True,
+            ))
+            continue
+
+        
         query = f"{field.control_area_name}: {clean_desc}"
 
         try:

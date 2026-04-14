@@ -7,7 +7,7 @@ import logging
 import re
 
 from services.embedder import embed_query
-from services.weaviate_client import vector_search
+from services.weaviate_client import vector_search, canary_search
 from config import settings
 
 logger = logging.getLogger(__name__)
@@ -31,7 +31,7 @@ MAX_DESCRIPTION_LENGTH = 3000
 
 
 
-CANARY_DISTANCE_THRESHOLD: float = 0.40
+CANARY_DISTANCE_THRESHOLD: float = 0.50
 
 
 
@@ -55,6 +55,50 @@ def sanitize_input(text: str) -> tuple[str, bool]:
     return text, False
 
 
+def check_canary_proximity(
+    raw_text: str,
+    collection_name: str,
+) -> tuple[bool, list[str]]:
+    """
+    Embed the RAW user description (NO control-area prefix) and check it
+    against canary chunks only.  This is the primary injection guard —
+    it prevents control area names from diluting adversarial signal.
+
+    Uses a filtered vector search that only examines canary vectors,
+    making it very cheap (~8 comparisons per call).
+
+    Returns:
+        (injection_detected, list_of_triggered_strategy_names)
+    """
+    query_vector = embed_query(raw_text)
+    canary_hits = canary_search(query_vector, collection_name)
+
+    triggered: list[str] = []
+    for hit in canary_hits:
+        distance = hit.get("distance") or 1.0
+        strategy = hit.get("injection_marker") or "unknown"
+        if distance <= CANARY_DISTANCE_THRESHOLD:
+            triggered.append(f"{strategy} (d={distance:.3f})")
+        else:
+            logger.debug(
+                "Canary [%s] distance=%.3f > threshold=%.2f — benign.",
+                strategy, distance, CANARY_DISTANCE_THRESHOLD,
+            )
+
+    if triggered:
+        logger.warning(
+            "CANARY PROXIMITY CHECK TRIGGERED in '%s' — %d strateg%s: [%s]. "
+            "Raw input: %.120s",
+            collection_name,
+            len(triggered),
+            "y" if len(triggered) == 1 else "ies",
+            ", ".join(triggered),
+            raw_text,
+        )
+
+    return bool(triggered), triggered
+
+
 def retrieve_policy(
     query: str,
     collection_name: str,
@@ -71,30 +115,43 @@ def retrieve_policy(
         top_k = settings.top_k
 
     
+    
+    from services.weaviate_client import CANARY_REGISTRY
+    canary_count = len(CANARY_REGISTRY)
+
     query_vector = embed_query(query)
-    hits = vector_search(query_vector, collection_name=collection_name, top_k=top_k + 1)
+    hits = vector_search(query_vector, collection_name=collection_name, top_k=top_k + canary_count)
 
     injection_detected = False
+    triggered_strategies: list[str] = []
     clean_hits = []
 
     for hit in hits:
         if hit.get("is_injection_canary"):
             distance = hit.get("distance") or 1.0
+            strategy = hit.get("injection_marker") or "unknown"
             if distance <= CANARY_DISTANCE_THRESHOLD:
-                logger.warning(
-                    "CANARY CHUNK RETRIEVED (distance=%.3f ≤ threshold=%.2f) "
-                    "in collection '%s' — likely prompt injection: %.80s",
-                    distance, CANARY_DISTANCE_THRESHOLD, collection_name, query,
-                )
+                triggered_strategies.append(strategy)
                 injection_detected = True
             else:
                 logger.debug(
-                    "Canary surfaced but distance=%.3f > threshold=%.2f — "
-                    "treating as benign retrieval noise.",
-                    distance, CANARY_DISTANCE_THRESHOLD,
+                    "Canary [%s] surfaced but distance=%.3f > threshold=%.2f — benign noise.",
+                    strategy, distance, CANARY_DISTANCE_THRESHOLD,
                 )
             
         else:
             clean_hits.append(hit)
+
+    if triggered_strategies:
+        logger.warning(
+            "CANARY TRIGGERED in '%s' — %d strateg%s matched (distance ≤ %.2f): [%s]. "
+            "Query: %.100s",
+            collection_name,
+            len(triggered_strategies),
+            "y" if len(triggered_strategies) == 1 else "ies",
+            CANARY_DISTANCE_THRESHOLD,
+            ", ".join(triggered_strategies),
+            query,
+        )
 
     return clean_hits[:top_k], injection_detected

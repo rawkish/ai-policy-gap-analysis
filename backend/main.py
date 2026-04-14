@@ -29,7 +29,7 @@ from services.weaviate_client import (
     ensure_collection, create_collection, list_collections,
     list_documents, delete_document,
     health_check as weaviate_health,
-    close_client,
+    close_client, sync_canaries,
 )
 from services.llm_client import health_check as ollama_health
 
@@ -45,11 +45,14 @@ logger = logging.getLogger(__name__)
 async def lifespan(app: FastAPI):
     """
     Startup:
-      1. Ensure the default collection exists (creates it + canary if new).
-      2. Auto-ingest the sample PDF into the default collection if brand new.
+      1. Ensure the default collection exists (creates it + canaries if new).
+      2. Sync canaries across ALL existing collections (backfills any that
+         were created before the canary registry was expanded).
+      3. Auto-ingest the sample PDF into the default collection if brand new.
     Shutdown:
       Close the Weaviate client connection.
     """
+
     
     logger.info("=== Startup: ensuring default collection '%s' ===", settings.default_collection)
     try:
@@ -58,6 +61,22 @@ async def lifespan(app: FastAPI):
         logger.error("Failed to ensure default collection: %s", exc)
         newly_created = False
 
+    
+    
+    try:
+        report = sync_canaries()
+        total_new = sum(report.values())
+        if total_new:
+            logger.info(
+                "=== Canary sync: inserted %d new canary/ies across %d collection(s): %s ===",
+                total_new, len(report), report,
+            )
+        else:
+            logger.info("=== Canary sync: all collections already up to date. ===")
+    except Exception as exc:
+        logger.error("Canary sync failed: %s", exc)
+
+    
     sample_path = os.path.join(settings.assets_dir, settings.sample_pdf_name)
     if newly_created and os.path.isfile(sample_path):
         logger.info("Auto-ingesting sample PDF: %s", sample_path)
@@ -78,9 +97,8 @@ async def lifespan(app: FastAPI):
     elif not os.path.isfile(sample_path):
         logger.warning("Sample PDF not found at %s — skipping auto-ingest.", sample_path)
 
-    yield   
+    yield
 
-    
     close_client()
 
 
