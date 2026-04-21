@@ -484,7 +484,6 @@ async function loadControlAreas() {
     const data = await apiFetch('/control-areas');
     state.controlAreas = data.control_areas;
     renderControlAreaList();
-    renderBrdControlAreaCheckboxes();
   } catch (err) {
     showToast('Failed to load control areas.', 'error');
   }
@@ -514,6 +513,8 @@ function renderControlAreaList() {
   if (cbAnalyse) cbAnalyse.checked = allSelected;
   const cbPolicy = document.getElementById('selectAllCheckboxPolicy');
   if (cbPolicy) cbPolicy.checked = allSelected;
+  const cbBrd = document.getElementById('selectAllCheckboxBrd');
+  if (cbBrd) cbBrd.checked = allSelected;
 
   const html = state.controlAreas.map(ca => `
     <button class="ca-item ${state.activeFields.has(ca.id) ? 'selected' : ''}"
@@ -527,6 +528,9 @@ function renderControlAreaList() {
   
   const policyList = document.getElementById('policyControlAreaList');
   if (policyList) policyList.innerHTML = html;
+
+  const brdList = document.getElementById('brdControlAreaList');
+  if (brdList) brdList.innerHTML = html;
 }
 
 function toggleControlArea(ca) {
@@ -873,17 +877,6 @@ async function updateTotalDocsCount() {
   }
 }
 
-function renderBrdControlAreaCheckboxes() {
-  const container = document.getElementById('brdControlAreaCheckboxes');
-  if (!container) return;
-  container.innerHTML = getControlAreaIds().filter(id => id !== 'noise').map(id => `
-    <label style="display: flex; align-items: center; gap: 4px; font-size: 13px; background: var(--bg-hover); padding: 4px 8px; border-radius: 4px; border: 1px solid var(--border); cursor: pointer;">
-      <input type="checkbox" class="brd-area-checkbox" value="${id}" checked style="cursor:pointer; width:14px; height:14px; accent-color:var(--brand-500);" />
-      ${escHtml(getControlAreaName(id))}
-    </label>
-  `).join('');
-}
-
 function escHtml(str) {
   if (!str) return '';
   return String(str)
@@ -1064,7 +1057,7 @@ async function runBrdAnalysis() {
 
   section.scrollIntoView({ behavior: 'smooth', block: 'start' });
 
-  const selectedAreas = Array.from(document.querySelectorAll('.brd-area-checkbox:checked')).map(cb => cb.value);
+  const selectedAreas = Array.from(state.activeFields.keys());
 
   try {
     const data = await apiFetch('/analyse-brd', {

@@ -218,9 +218,31 @@
 
     <!-- ══ BRD ANALYSIS TAB ═══════════════════════════════════════════════════ -->
     <section id="panel-brd" class="tab-panel" role="tabpanel" aria-labelledby="tab-brd">
+      <div class="analyse-layout">
+        <!-- Sidebar for Policy Control Areas -->
+        <aside class="control-area-sidebar card">
+          <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px;">
+            <h2 class="card-title" style="margin-bottom: 0;">Control Areas</h2>
+            <div style="display: flex; align-items: center; gap: 6px;" title="Select all control areas">
+              <label for="selectAllCheckboxBrd" style="font-size: 11px; font-weight: 600; text-transform: uppercase; color: var(--text-muted); cursor: pointer;">All</label>
+              <input type="checkbox" id="selectAllCheckboxBrd" style="cursor: pointer; width: 14px; height: 14px; accent-color: var(--brand-500);" onclick="toggleAllControlAreas(this.checked)" />
+            </div>
+          </div>
+          <div id="brdControlAreaList" class="control-area-list"></div>
+          <div class="custom-area-section">
+            <label class="form-label" for="brdCustomAreaInput">Custom Control Area</label>
+            <div class="custom-area-input-row">
+              <input type="text" id="brdCustomAreaInput" class="form-input" placeholder="Enter custom area name…" maxlength="100" />
+              <button class="btn btn-sm btn-outline" onclick="addCustomArea('brdCustomAreaInput')">Add</button>
+            </div>
+          </div>
+        </aside>
 
-      <!-- BRD Upload -->
-      <div class="card brd-upload-card">
+        <!-- Main Content -->
+        <div class="analyse-main">
+
+          <!-- BRD Upload -->
+          <div class="card brd-upload-card">
         <div class="card-header-row">
           <h2 class="card-title">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color:var(--brand-400)">
@@ -279,12 +301,13 @@
 
       <!-- Classified BRD Chunks -->
       <div class="card" id="brdChunksCard" style="display:none">
-        <div class="card-header-row">
-          <h2 class="card-title">
+        <div class="card-header-row" style="cursor: pointer;" onclick="toggleCard('brdChunksContainer', this)">
+          <h2 class="card-title" style="display: flex; align-items: center;">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color:var(--violet);display:inline;vertical-align:middle;margin-right:4px"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg>
             Classified BRD Chunks
+            <svg class="chevron-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-left: 8px; transition: transform 0.2s;"><polyline points="18 15 12 9 6 15"/></svg>
           </h2>
-          <button class="btn btn-sm btn-ghost" onclick="loadClassifiedChunks('brd')">
+          <button class="btn btn-sm btn-ghost" onclick="event.stopPropagation(); loadClassifiedChunks('brd')">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
             Refresh
           </button>
@@ -297,12 +320,7 @@
         <div class="card-header-row">
           <h2 class="card-title">BRD Compliance Analysis</h2>
         </div>
-        <p class="brd-description" style="margin-bottom: 12px;">Uses the stored classifications to compare policy and BRD chunks per control area via AI analysis.</p>
-
-        <div style="margin-bottom: 16px;">
-          <h3 style="font-size: 13px; margin-bottom: 8px; color: var(--text-muted); font-weight: 600; text-transform: uppercase;">Control Areas to Analyse</h3>
-          <div id="brdControlAreaCheckboxes" style="display: flex; flex-wrap: wrap; gap: 8px;"></div>
-        </div>
+        <p class="brd-description" style="margin-bottom: 12px;">Uses the stored classifications to compare policy and BRD chunks per control area via AI analysis. It will run based on the control areas selected in the left panel.</p>
 
         <div class="analyse-actions" style="display:flex;">
           <button class="btn btn-primary btn-lg" id="brdAnalyseBtn" onclick="runBrdAnalysis()">
@@ -324,7 +342,9 @@
 
         <div id="brdResultsContainer"></div>
       </div>
-
+      
+        </div> <!-- /analyse-main -->
+      </div> <!-- /analyse-layout -->
     </section>
 
   </main>
