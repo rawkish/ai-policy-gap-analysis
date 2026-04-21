@@ -1228,3 +1228,333 @@ body {
   justify-content: flex-end;
   gap: 10px;
 }
+
+/* ── Delete Collection Button ──────────────────────────────────────────── */
+.btn-danger-ghost {
+  background: transparent;
+  color: var(--red);
+  border: 1px solid rgba(239,68,68,0.25);
+}
+
+.btn-danger-ghost:hover:not(:disabled) {
+  background: var(--red-bg);
+  border-color: rgba(239,68,68,0.4);
+}
+
+/* ── BRD Tab Styles ─────────────────────────────────────────────────────── */
+.brd-description {
+  font-size: 14px;
+  color: var(--text-secondary);
+  line-height: 1.6;
+  margin-bottom: 16px;
+}
+
+.brd-upload-card .card-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.brd-processing-msg {
+  padding: 32px 20px;
+  text-align: center;
+  color: var(--text-muted);
+  font-size: 14px;
+  font-style: italic;
+}
+
+/* Classification Summary */
+.classification-summary {
+  margin-bottom: 20px;
+}
+
+.classification-card {
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-xl);
+  padding: 20px 24px;
+  box-shadow: var(--shadow-card);
+}
+
+.classification-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-primary);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+
+.classification-title svg {
+  color: var(--brand-400);
+}
+
+.classification-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.classification-table th {
+  text-align: left;
+  padding: 8px 14px;
+  color: var(--text-muted);
+  font-weight: 500;
+  border-bottom: 1px solid var(--border);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.classification-table td {
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--border);
+  color: var(--text-secondary);
+}
+
+.classification-table tr:last-child td {
+  border-bottom: none;
+}
+
+.classification-table tr:hover td {
+  background: var(--bg-elevated);
+}
+
+.chunk-count {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 13px;
+  font-weight: 600;
+  text-align: center;
+  color: var(--brand-400);
+}
+
+.chunk-count.zero-count {
+  color: var(--red);
+}
+
+/* BRD Chunk Info Badges */
+.brd-chunk-info {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 14px;
+  flex-wrap: wrap;
+}
+
+.chunk-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  font-weight: 500;
+  padding: 4px 10px;
+  border-radius: 99px;
+}
+
+.policy-badge {
+  color: var(--brand-400);
+  background: rgba(99,102,241,0.1);
+  border: 1px solid rgba(99,102,241,0.2);
+}
+
+.brd-badge {
+  color: var(--violet);
+  background: rgba(139,92,246,0.1);
+  border: 1px solid rgba(139,92,246,0.2);
+}
+
+/* BRD Reference List styling */
+.brd-ref-list li {
+  color: var(--violet);
+}
+
+.brd-ref-list li::marker {
+  color: var(--violet);
+}
+
+/* ── Chunks Accordion ──────────────────────────────────────────────────── */
+.chunks-accordion {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.chunk-area-section {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+}
+
+.chunk-area-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  background: var(--bg-elevated);
+  cursor: pointer;
+  transition: background var(--transition);
+  user-select: none;
+}
+
+.chunk-area-header:hover {
+  background: var(--bg-overlay);
+}
+
+.chunk-area-name {
+  flex: 1;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.chunk-area-count {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--brand-400);
+  background: rgba(99,102,241,0.1);
+  padding: 2px 8px;
+  border-radius: 99px;
+  min-width: 28px;
+  text-align: center;
+}
+
+.chunk-area-count.zero {
+  color: var(--text-muted);
+  background: var(--bg-overlay);
+}
+
+.chunk-area-chevron {
+  color: var(--text-muted);
+  transition: transform var(--transition);
+  flex-shrink: 0;
+}
+
+.chunk-area-header.expanded .chunk-area-chevron {
+  transform: rotate(180deg);
+}
+
+.chunk-area-body {
+  max-height: 0;
+  overflow: hidden;
+  transition: max-height 0.3s ease;
+}
+
+.chunk-area-body.expanded {
+  max-height: 5000px;
+}
+
+/* ── Chunk Cards ────────────────────────────────────────────────────────── */
+.chunk-card {
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--border);
+  transition: background var(--transition);
+}
+
+.chunk-card:last-child {
+  border-bottom: none;
+}
+
+.chunk-card:hover {
+  background: rgba(99,102,241,0.03);
+}
+
+.chunk-card-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.chunk-heading {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--brand-400);
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.conf-badge {
+  font-size: 11px;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 99px;
+  flex-shrink: 0;
+}
+
+.conf-verified {
+  color: var(--green);
+  background: var(--green-bg);
+}
+
+.conf-high {
+  color: var(--brand-400);
+  background: rgba(99,102,241,0.1);
+}
+
+.conf-medium {
+  color: var(--yellow);
+  background: var(--yellow-bg);
+}
+
+.conf-low {
+  color: var(--red);
+  background: var(--red-bg);
+}
+
+.chunk-preview {
+  font-size: 13px;
+  color: var(--text-secondary);
+  line-height: 1.5;
+  margin: 0 0 8px 0;
+  cursor: pointer;
+  transition: color var(--transition);
+}
+
+.chunk-preview:hover {
+  color: var(--text-primary);
+}
+
+.chunk-card-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.chunk-area-select {
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 500;
+  padding: 4px 24px 4px 8px;
+  outline: none;
+  cursor: pointer;
+  appearance: none;
+  -webkit-appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 24 24' fill='none' stroke='%238b8fa8' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 6px center;
+  min-width: 140px;
+  transition: border-color var(--transition);
+}
+
+.chunk-area-select:focus {
+  border-color: var(--brand-500);
+  box-shadow: 0 0 0 2px rgba(99,102,241,0.15);
+}
+
+.chunk-source {
+  font-size: 11px;
+  color: var(--text-muted);
+  font-family: 'JetBrains Mono', monospace;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 200px;
+}

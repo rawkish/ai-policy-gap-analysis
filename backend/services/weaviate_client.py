@@ -145,6 +145,9 @@ def _collection_properties() -> list[Property]:
         Property(name="ingested_at",         data_type=DataType.TEXT),
         Property(name="is_injection_canary", data_type=DataType.BOOL),
         Property(name="injection_marker",    data_type=DataType.TEXT),
+        Property(name="doc_type",            data_type=DataType.TEXT),  # "policy" or "brd"
+        Property(name="control_area",        data_type=DataType.TEXT),  # comma-separated IDs
+        Property(name="classification_confidence", data_type=DataType.NUMBER),  # 0.0–1.0
     ]
 
 
@@ -197,6 +200,19 @@ def create_collection(collection_name: str) -> dict:
 
     ensure_collection(name)
     return {"name": name, "original": original, "created": True}
+
+
+def delete_collection(collection_name: str) -> bool:
+    """
+    Delete an entire Weaviate collection and all its data.
+    Returns True if deleted, raises ValueError if it doesn't exist.
+    """
+    client = get_client()
+    if not client.collections.exists(collection_name):
+        raise ValueError(f"Collection '{collection_name}' does not exist.")
+    client.collections.delete(collection_name)
+    logger.info("Deleted collection '%s'.", collection_name)
+    return True
 
 
 def list_collections() -> list[str]:
@@ -317,11 +333,16 @@ def sync_canaries(collection_name: str | None = None) -> dict[str, int]:
     return report
 
 
-def store_chunks(chunks_with_vectors: list[dict], collection_name: str) -> int:
+def store_chunks(
+    chunks_with_vectors: list[dict],
+    collection_name: str,
+    doc_type: str = "policy",
+) -> list[str]:
     """
     Bulk-insert chunks into the specified Weaviate collection.
     Each item: {text, source_file, heading, heading_level, chunk_index, vector}
-    Returns number of objects inserted.
+    doc_type: "policy" (default) or "brd".
+    Returns list of UUIDs of inserted objects.
     """
     ensure_collection(collection_name)
 
@@ -329,8 +350,12 @@ def store_chunks(chunks_with_vectors: list[dict], collection_name: str) -> int:
     collection = client.collections.get(collection_name)
     now = datetime.now(timezone.utc).isoformat()
 
+    import uuid as uuid_mod
+    uuids = []
+
     with collection.batch.dynamic() as batch:
         for item in chunks_with_vectors:
+            obj_uuid = str(uuid_mod.uuid4())
             batch.add_object(
                 properties={
                     "text":                item["text"],
@@ -341,25 +366,37 @@ def store_chunks(chunks_with_vectors: list[dict], collection_name: str) -> int:
                     "ingested_at":         now,
                     "is_injection_canary": False,
                     "injection_marker":    "",
+                    "doc_type":            doc_type,
+                    "control_area":        item.get("control_area", ""),
+                    "classification_confidence": item.get("classification_confidence", 0.0),
                 },
                 vector=item["vector"],
+                uuid=obj_uuid,
             )
+            uuids.append(obj_uuid)
 
-    return len(chunks_with_vectors)
+    return uuids
 
 
 
 
-def list_documents(collection_name: str) -> list[dict]:
-    """Return aggregated document list for a specific collection."""
+def list_documents(collection_name: str, doc_type: str | None = None) -> list[dict]:
+    """Return aggregated document list for a specific collection, optionally filtered by doc_type."""
     client = get_client()
     if not client.collections.exists(collection_name):
         return []
 
     collection = client.collections.get(collection_name)
+
+    base_filter = wvc.query.Filter.by_property("is_injection_canary").equal(False)
+    if doc_type:
+        combined = base_filter & wvc.query.Filter.by_property("doc_type").equal(doc_type)
+    else:
+        combined = base_filter
+
     results = collection.query.fetch_objects(
-        filters=wvc.query.Filter.by_property("is_injection_canary").equal(False),
-        return_properties=["source_file", "ingested_at"],
+        filters=combined,
+        return_properties=["source_file", "ingested_at", "doc_type"],
         limit=10000,
     )
 
@@ -367,8 +404,9 @@ def list_documents(collection_name: str) -> list[dict]:
     for obj in results.objects:
         sf = obj.properties.get("source_file", "unknown")
         ia = obj.properties.get("ingested_at", "")
+        dt = obj.properties.get("doc_type", "policy")
         if sf not in docs:
-            docs[sf] = {"filename": sf, "chunk_count": 0, "ingested_at": ia}
+            docs[sf] = {"filename": sf, "chunk_count": 0, "ingested_at": ia, "doc_type": dt}
         docs[sf]["chunk_count"] += 1
 
     return list(docs.values())
@@ -453,6 +491,165 @@ def canary_search(
         }
         for obj in results.objects
     ]
+
+
+def fetch_all_chunks(
+    collection_name: str,
+    doc_type: str | None = None,
+) -> list[dict]:
+    """
+    Retrieve ALL non-canary chunks from a collection, optionally filtered by doc_type.
+    Returns list of dicts with text, source_file, heading, vector, control_area, confidence.
+    """
+    client = get_client()
+    if not client.collections.exists(collection_name):
+        return []
+
+    collection = client.collections.get(collection_name)
+
+    # Build filter: always exclude canaries
+    base_filter = wvc.query.Filter.by_property("is_injection_canary").equal(False)
+    if doc_type:
+        combined = base_filter & wvc.query.Filter.by_property("doc_type").equal(doc_type)
+    else:
+        combined = base_filter
+
+    results = collection.query.fetch_objects(
+        filters=combined,
+        return_properties=[
+            "text", "source_file", "heading", "heading_level", "chunk_index",
+            "doc_type", "control_area", "classification_confidence",
+        ],
+        include_vector=True,
+        limit=10000,
+    )
+
+    chunks = []
+    for obj in results.objects:
+        vec = obj.vector
+        if isinstance(vec, dict):
+            vec = vec.get("default", [])
+        chunks.append({
+            "uuid":        str(obj.uuid),
+            "text":        obj.properties.get("text", ""),
+            "source_file": obj.properties.get("source_file", "unknown"),
+            "heading":     obj.properties.get("heading", ""),
+            "vector":      vec,
+            "doc_type":    obj.properties.get("doc_type", "policy"),
+            "control_area": obj.properties.get("control_area", ""),
+            "classification_confidence": obj.properties.get("classification_confidence", 0.0),
+        })
+
+    logger.info(
+        "Fetched %d chunks from '%s' (doc_type=%s).",
+        len(chunks), collection_name, doc_type or "all",
+    )
+    return chunks
+
+
+def fetch_classified_chunks(
+    collection_name: str,
+    doc_type: str | None = None,
+) -> list[dict]:
+    """
+    Retrieve chunks with their classification info (without vectors).
+    Returns list of dicts suitable for the ClassifiedChunkResponse schema.
+    """
+    client = get_client()
+    if not client.collections.exists(collection_name):
+        return []
+
+    collection = client.collections.get(collection_name)
+
+    base_filter = wvc.query.Filter.by_property("is_injection_canary").equal(False)
+    if doc_type:
+        combined = base_filter & wvc.query.Filter.by_property("doc_type").equal(doc_type)
+    else:
+        combined = base_filter
+
+    results = collection.query.fetch_objects(
+        filters=combined,
+        return_properties=[
+            "text", "source_file", "heading", "doc_type",
+            "control_area", "classification_confidence",
+        ],
+        include_vector=False,
+        limit=10000,
+    )
+
+    chunks = []
+    for obj in results.objects:
+        ca_str = obj.properties.get("control_area", "") or ""
+        control_areas = [x.strip() for x in ca_str.split(",") if x.strip()] if ca_str else []
+        chunks.append({
+            "uuid":          str(obj.uuid),
+            "text":          obj.properties.get("text", ""),
+            "heading":       obj.properties.get("heading", ""),
+            "source_file":   obj.properties.get("source_file", "unknown"),
+            "control_areas": control_areas,
+            "confidence":    obj.properties.get("classification_confidence", 0.0) or 0.0,
+            "doc_type":      obj.properties.get("doc_type", "policy"),
+        })
+
+    return chunks
+
+
+def update_chunk_classification(
+    collection_name: str,
+    chunk_uuid: str,
+    control_areas: list[str],
+) -> bool:
+    """
+    Update the control_area classification on a single chunk by UUID.
+    Sets confidence to 1.0 (human-verified).
+    """
+    client = get_client()
+    if not client.collections.exists(collection_name):
+        raise ValueError(f"Collection '{collection_name}' does not exist.")
+
+    collection = client.collections.get(collection_name)
+    ca_str = ",".join(control_areas)
+    collection.data.update(
+        uuid=chunk_uuid,
+        properties={
+            "control_area": ca_str,
+            "classification_confidence": 1.0,
+        },
+    )
+    logger.info(
+        "Updated chunk %s in '%s' → control_area='%s' (human-verified)",
+        chunk_uuid, collection_name, ca_str,
+    )
+    return True
+
+
+def batch_update_classifications(
+    collection_name: str,
+    updates: list[dict],
+) -> int:
+    """
+    Batch update control_area + confidence on multiple chunks.
+    Each item: {uuid, control_area (comma-separated str), confidence (float)}
+    Returns number updated.
+    """
+    client = get_client()
+    if not client.collections.exists(collection_name):
+        return 0
+
+    collection = client.collections.get(collection_name)
+    count = 0
+    for item in updates:
+        collection.data.update(
+            uuid=item["uuid"],
+            properties={
+                "control_area": item["control_area"],
+                "classification_confidence": item.get("confidence", 0.0),
+            },
+        )
+        count += 1
+
+    logger.info("Batch-updated %d chunk classifications in '%s'.", count, collection_name)
+    return count
 
 
 def health_check() -> tuple[bool, str]:

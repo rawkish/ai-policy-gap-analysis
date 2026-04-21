@@ -27,8 +27,22 @@ class Settings(BaseSettings):
     max_chunk_tokens: int = Field(default=512, env="MAX_CHUNK_TOKENS")
     chunk_stride_tokens: int = Field(default=128, env="CHUNK_STRIDE_TOKENS")
 
-    
+    # 
     top_k: int = Field(default=5, env="TOP_K")
+
+    # --- Classification (BRD analysis) ---
+    classification_margin: float = Field(
+        default=0.05, env="CLASSIFICATION_MARGIN",
+        description="If top-2 control-area scores differ by less than this, assign chunk to both.",
+    )
+    classification_min_score: float = Field(
+        default=0.45, env="CLASSIFICATION_MIN_SCORE",
+        description="Minimum cosine similarity to assign a chunk to any control area. Updated to 50% threshold for stricter matching.",
+    )
+    parallel_analysis: bool = Field(
+        default=False, env="PARALLEL_ANALYSIS",
+        description="Run per-control-area LLM calls concurrently when True.",
+    )
 
     
     canary_marker: str = Field(

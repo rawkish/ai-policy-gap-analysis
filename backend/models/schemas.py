@@ -111,3 +111,68 @@ class ServiceStatus(BaseModel):
 class HealthResponse(BaseModel):
     overall: Literal["ok", "degraded", "error"]
     services: list[ServiceStatus]
+
+
+# ── BRD Analysis ──────────────────────────────────────────────────────────────
+
+class ClassificationDetail(BaseModel):
+    """Per-control-area chunk counts after classification."""
+    control_area_id: str
+    control_area_name: str
+    policy_chunk_count: int = 0
+    brd_chunk_count: int = 0
+
+
+class BrdAnalyseRequest(BaseModel):
+    collection_name: str = Field(..., min_length=1)
+    parallel: bool = Field(default=False, description="Run LLM calls concurrently if True.")
+    active_areas: Optional[list[str]] = Field(default=None, description="List of control area IDs to analyse. If empty, runs all.")
+
+
+class BrdControlResult(BaseModel):
+    """Compliance result for one control area (BRD mode)."""
+    control_area_id: str
+    control_area_name: str
+    status: StatusLiteral
+    summary: str
+    gap_detail: Optional[str] = None
+    policy_references: list[str] = []
+    brd_references: list[str] = []
+    policy_chunk_count: int = 0
+    brd_chunk_count: int = 0
+    error: Optional[str] = None
+
+
+class BrdAnalyseResponse(BaseModel):
+    results: list[BrdControlResult]
+    classification: list[ClassificationDetail] = []
+
+
+# ── Collection management ─────────────────────────────────────────────────────
+
+class DeleteCollectionResponse(BaseModel):
+    name: str
+    deleted: bool
+
+
+# ── Classified Chunks (human-in-the-loop) ─────────────────────────────────────
+
+class ClassifiedChunkResponse(BaseModel):
+    """A single chunk with its classification info, exposed to the frontend."""
+    uuid: str
+    text: str
+    heading: str
+    source_file: str
+    control_areas: list[str] = []      # e.g. ["authentication", "authorization"]
+    confidence: float = 0.0            # 0.0–1.0 (1.0 = human-verified)
+    doc_type: str = "policy"
+
+
+class ClassifiedChunksResponse(BaseModel):
+    chunks: list[ClassifiedChunkResponse]
+    control_area_summary: dict[str, int] = {}  # {"authentication": 5, ...}
+
+
+class UpdateClassificationRequest(BaseModel):
+    collection_name: str = Field(..., min_length=1)
+    control_areas: list[str]           # new assignment, e.g. ["authentication"]

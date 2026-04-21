@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 import sys
 import os
+import json
 from contextlib import asynccontextmanager
 
 sys.path.insert(0, os.path.dirname(__file__))
@@ -22,12 +23,16 @@ from models.schemas import (
     ControlAreasResponse, ControlArea,
     AnalyseRequest, AnalyseResponse,
     HealthResponse, ServiceStatus,
+    BrdAnalyseRequest, BrdAnalyseResponse, DeleteCollectionResponse,
+    ClassifiedChunkResponse, ClassifiedChunksResponse, UpdateClassificationRequest,
 )
 from pipelines.ingestion import run_ingestion
 from pipelines.analysis import run_analysis
+from pipelines.brd_analysis import run_brd_analysis, classify_brd_with_policy_centroids
 from services.weaviate_client import (
-    ensure_collection, create_collection, list_collections,
-    list_documents, delete_document,
+    ensure_collection, create_collection, delete_collection, list_collections,
+    list_documents, delete_document, store_chunks,
+    fetch_classified_chunks, update_chunk_classification,
     health_check as weaviate_health,
     close_client, sync_canaries,
 )
@@ -43,15 +48,6 @@ logger = logging.getLogger(__name__)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """
-    Startup:
-      1. Ensure the default collection exists (creates it + canaries if new).
-      2. Sync canaries across ALL existing collections (backfills any that
-         were created before the canary registry was expanded).
-      3. Auto-ingest the sample PDF into the default collection if brand new.
-    Shutdown:
-      Close the Weaviate client connection.
-    """
 
     
     logger.info("=== Startup: ensuring default collection '%s' ===", settings.default_collection)
@@ -245,12 +241,21 @@ async def get_control_areas():
 async def ingest_documents(
     files: list[UploadFile] = File(...),
     collection_name: str = Form(...),
+    control_areas: str = Form(None),
 ):
     """Upload PDFs and ingest them into the specified collection."""
     if not files:
         raise HTTPException(status_code=400, detail="No files provided.")
     if not collection_name.strip():
         raise HTTPException(status_code=400, detail="collection_name is required.")
+
+    active_areas = CONTROL_AREAS
+    if control_areas:
+        try:
+            parsed_areas = json.loads(control_areas)
+            active_areas = [ControlArea(**a) for a in parsed_areas]
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=f"Invalid control_areas JSON: {exc}")
 
     results = []
     for upload in files:
@@ -268,6 +273,7 @@ async def ingest_documents(
             file_bytes,
             filename=upload.filename,
             collection_name=collection_name.strip(),
+            active_areas=active_areas,
         )
         results.append(IngestResponse(**result))
 
@@ -277,9 +283,12 @@ async def ingest_documents(
 
 
 @app.get("/api/documents", response_model=DocumentsResponse, tags=["Documents"])
-async def get_documents(collection_name: str = Query(...)):
-    """List documents stored in a specific collection."""
-    docs = list_documents(collection_name)
+async def get_documents(
+    collection_name: str = Query(...),
+    doc_type: str = Query(default=None, description="Filter by doc_type: 'policy' or 'brd'"),
+):
+    """List documents stored in a specific collection, optionally filtered by doc_type."""
+    docs = list_documents(collection_name, doc_type=doc_type)
     return DocumentsResponse(documents=[DocumentInfo(**d) for d in docs])
 
 
@@ -301,8 +310,129 @@ async def analyse(request: AnalyseRequest):
     return AnalyseResponse(results=results)
 
 
+# ── Collection Delete ─────────────────────────────────────────────────────────
+
+@app.delete("/api/collections/{collection_name}", response_model=DeleteCollectionResponse, tags=["Collections"])
+async def remove_collection(collection_name: str):
+    """Delete an entire Weaviate collection and all its data."""
+    try:
+        delete_collection(collection_name)
+        return DeleteCollectionResponse(name=collection_name, deleted=True)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
 
 
+# ── BRD Ingestion ─────────────────────────────────────────────────────────────
+
+@app.post("/api/ingest-brd", response_model=list[IngestResponse], tags=["BRD"])
+async def ingest_brd(
+    files: list[UploadFile] = File(...),
+    collection_name: str = Form(...),
+):
+    """Upload BRD PDFs and ingest them into the specified collection with doc_type='brd'."""
+    if not files:
+        raise HTTPException(status_code=400, detail="No files provided.")
+    if not collection_name.strip():
+        raise HTTPException(status_code=400, detail="collection_name is required.")
+
+    results = []
+    for upload in files:
+        if not (upload.filename or "").lower().endswith(".pdf"):
+            results.append(IngestResponse(
+                filename=upload.filename or "unknown",
+                chunks_stored=0,
+                status="error",
+                message="Only PDF files are supported.",
+            ))
+            continue
+
+        file_bytes = await upload.read()
+        result = await run_ingestion(
+            file_bytes,
+            filename=upload.filename,
+            collection_name=collection_name.strip(),
+            doc_type="brd",
+        )
+        results.append(IngestResponse(**result))
+
+    # After BRD ingestion, classify using policy centroids
+    try:
+        classify_brd_with_policy_centroids(collection_name.strip())
+    except ValueError as exc:
+        logger.warning("BRD centroid classification skipped: %s", exc)
+
+    return results
+
+
+# ── BRD Analysis ──────────────────────────────────────────────────────────────
+
+@app.post("/api/analyse-brd", response_model=BrdAnalyseResponse, tags=["BRD"])
+async def analyse_brd(request: BrdAnalyseRequest):
+    """
+    Run BRD-based compliance analysis.
+    Compares BRD chunks against policy chunks in the specified collection.
+    """
+    try:
+        result = await run_brd_analysis(
+            collection_name=request.collection_name,
+            parallel=request.parallel,
+            active_areas=request.active_areas,
+        )
+        return BrdAnalyseResponse(**result)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    except Exception as exc:
+        logger.exception("BRD analysis failed: %s", exc)
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
+# ── Debug Classification ──────────────────────────────────────────────────────
+
+@app.get("/api/debug-classify", tags=["BRD"])
+async def debug_classify(text: str = Query(..., description="Text to classify")):
+    """Classify a single piece of text and return per-control-area similarity scores."""
+    from pipelines.classifier import build_anchors, debug_classify_chunk
+    from pipelines.brd_analysis import _get_control_areas
+    anchors = build_anchors(_get_control_areas())
+    scores = debug_classify_chunk(text, anchors)
+    return {"text_preview": text[:120], "scores": scores}
+
+
+# ── Classified Chunks (human-in-the-loop) ───────────────────────────────────────
+
+@app.get("/api/classified-chunks", response_model=ClassifiedChunksResponse, tags=["Classification"])
+async def get_classified_chunks(
+    collection_name: str = Query(...),
+    doc_type: str = Query(default=None, description="Filter by 'policy' or 'brd'"),
+):
+    """Fetch all chunks with their classification info for manual review."""
+    chunks = fetch_classified_chunks(collection_name, doc_type=doc_type)
+    # Build summary
+    summary: dict[str, int] = {}
+    for c in chunks:
+        for area in c["control_areas"]:
+            summary[area] = summary.get(area, 0) + 1
+    return ClassifiedChunksResponse(
+        chunks=[ClassifiedChunkResponse(**c) for c in chunks],
+        control_area_summary=summary,
+    )
+
+
+@app.patch("/api/chunks/{chunk_uuid}/classification", tags=["Classification"])
+async def update_classification(
+    chunk_uuid: str,
+    request: UpdateClassificationRequest,
+):
+    """Update the control area classification of a single chunk (human correction)."""
+    try:
+        update_chunk_classification(
+            collection_name=request.collection_name,
+            chunk_uuid=chunk_uuid,
+            control_areas=request.control_areas,
+        )
+        return {"uuid": chunk_uuid, "control_areas": request.control_areas, "confidence": 1.0}
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
 
 
 

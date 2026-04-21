@@ -29,6 +29,14 @@ function switchTab(tabName) {
   document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
   document.getElementById(`panel-${tabName}`).classList.add('active');
   document.getElementById(`tab-${tabName}`).classList.add('active');
+
+  // Load data for the active tab
+  if (tabName === 'database') {
+    loadClassifiedChunks('policy');
+  } else if (tabName === 'brd') {
+    loadBrdDocuments();
+    loadClassifiedChunks('brd');
+  }
 }
 
 // ─── Health check ─────────────────────────────────────────────────────────────
@@ -123,6 +131,9 @@ async function loadCollections() {
 
     // Load documents for whichever collection is now active
     await loadDocuments();
+    if (state.activeCollection) {
+      loadClassifiedChunks('policy');
+    }
   } catch (err) {
     showToast('Failed to load collections.', 'error');
   }
@@ -133,6 +144,10 @@ function onCollectionChange(value) {
   state.activeCollection = value;
   // Reload documents for the newly selected collection
   loadDocuments();
+  loadBrdDocuments();
+  updateTotalDocsCount();
+  loadClassifiedChunks('policy');
+  loadClassifiedChunks('brd');
   // Hide results from a previous analysis run (they belong to the old collection)
   document.getElementById('resultsSection').classList.add('hidden');
   showToast(`Switched to collection: ${value}`, 'info', 2500);
@@ -296,6 +311,17 @@ async function storeDocuments() {
   state.selectedFiles.forEach(f => formData.append('files', f));
   formData.append('collection_name', state.activeCollection);
 
+  const activeAreasJson = [...state.activeFields.entries()].map(([id, {area, description}]) => ({
+    id: id,
+    name: area.name,
+    label: area.label || area.name,
+    placeholder: description.trim(),
+    category: area.category || 'Custom'
+  }));
+  if (activeAreasJson.length > 0) {
+    formData.append('control_areas', JSON.stringify(activeAreasJson));
+  }
+
   try {
     const results = await apiFetchRaw('/ingest', { method: 'POST', body: formData });
 
@@ -313,6 +339,8 @@ async function storeDocuments() {
     if (failed > 0)    showToast(`${failed} document(s) failed to ingest.`, 'error');
 
     await loadDocuments();
+    updateTotalDocsCount();
+    loadClassifiedChunks('policy');
 
     const failedNames = new Set(results.filter(r => r.status !== 'success').map(r => r.filename));
     state.selectedFiles = state.selectedFiles.filter(f => failedNames.has(f.name));
@@ -330,7 +358,7 @@ async function loadDocuments() {
   if (!state.activeCollection) return;
   const container = document.getElementById('documentsContainer');
   try {
-    const data = await apiFetch(`/documents?collection_name=${encodeURIComponent(state.activeCollection)}`);
+    const data = await apiFetch(`/documents?collection_name=${encodeURIComponent(state.activeCollection)}&doc_type=policy`);
     const docs = data.documents;
 
     if (docs.length === 0) {
@@ -378,6 +406,59 @@ async function loadDocuments() {
   }
 }
 
+// ─── Load BRD documents ───────────────────────────────────────────────────────
+async function loadBrdDocuments() {
+  if (!state.activeCollection) return;
+  const container = document.getElementById('brdDocumentsContainer');
+  try {
+    const data = await apiFetch(`/documents?collection_name=${encodeURIComponent(state.activeCollection)}&doc_type=brd`);
+    const docs = data.documents;
+
+    if (docs.length === 0) {
+      container.innerHTML = `
+        <div class="empty-state">
+          <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+          <p>No BRD documents stored yet</p>
+        </div>`;
+      return;
+    }
+
+    container.innerHTML = `
+      <table class="documents-table">
+        <thead>
+          <tr>
+            <th>Document</th>
+            <th>Chunks</th>
+            <th>Ingested At</th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${docs.map(d => `
+            <tr>
+              <td>
+                <div class="doc-name">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color:var(--violet)"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+                  ${escHtml(d.filename)}
+                </div>
+              </td>
+              <td class="doc-chunks">${d.chunk_count}</td>
+              <td>${d.ingested_at ? new Date(d.ingested_at).toLocaleString('en-GB', {day:'2-digit',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit'}) : '—'}</td>
+              <td>
+                <button class="btn btn-sm btn-danger" onclick="deleteDocument('${escHtml(d.filename)}')"> 
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/></svg>
+                  Delete
+                </button>
+              </td>
+            </tr>
+          `).join('')}
+        </tbody>
+      </table>`;
+  } catch (err) {
+    container.innerHTML = `<div class="empty-state"><p style="color:var(--red)">Failed to load BRD documents: ${err.message}</p></div>`;
+  }
+}
+
 async function deleteDocument(filename) {
   if (!confirm(`Delete all chunks for "${filename}" from "${state.activeCollection}"? This cannot be undone.`)) return;
   try {
@@ -387,6 +468,8 @@ async function deleteDocument(filename) {
     );
     showToast(`"${filename}" deleted from "${state.activeCollection}".`, 'success');
     await loadDocuments();
+    await loadBrdDocuments();
+    updateTotalDocsCount();
   } catch (err) {
     showToast(`Delete failed: ${err.message}`, 'error');
   }
@@ -401,6 +484,7 @@ async function loadControlAreas() {
     const data = await apiFetch('/control-areas');
     state.controlAreas = data.control_areas;
     renderControlAreaList();
+    renderBrdControlAreaCheckboxes();
   } catch (err) {
     showToast('Failed to load control areas.', 'error');
   }
@@ -425,16 +509,24 @@ function toggleAllControlAreas(isChecked) {
 
 function renderControlAreaList() {
   const allSelected = state.controlAreas.length > 0 && state.controlAreas.every(ca => state.activeFields.has(ca.id));
-  const cb = document.getElementById('selectAllCheckbox');
-  if (cb) cb.checked = allSelected;
+  
+  const cbAnalyse = document.getElementById('selectAllCheckbox');
+  if (cbAnalyse) cbAnalyse.checked = allSelected;
+  const cbPolicy = document.getElementById('selectAllCheckboxPolicy');
+  if (cbPolicy) cbPolicy.checked = allSelected;
 
-  document.getElementById('controlAreaList').innerHTML = state.controlAreas.map(ca => `
+  const html = state.controlAreas.map(ca => `
     <button class="ca-item ${state.activeFields.has(ca.id) ? 'selected' : ''}"
-            id="ca-chip-${ca.id}"
             onclick="toggleControlArea(${JSON.stringify(ca).replace(/"/g, '&quot;')})">
       <span style="flex:1;text-align:left">${escHtml(ca.name)}</span>
     </button>
   `).join('');
+
+  const analyseList = document.getElementById('analyseControlAreaList');
+  if (analyseList) analyseList.innerHTML = html;
+  
+  const policyList = document.getElementById('policyControlAreaList');
+  if (policyList) policyList.innerHTML = html;
 }
 
 function toggleControlArea(ca) {
@@ -442,12 +534,21 @@ function toggleControlArea(ca) {
 }
 
 // ─── Custom control area ──────────────────────────────────────────────────────
-function addCustomArea() {
-  const input = document.getElementById('customAreaInput');
+function addCustomArea(inputId = 'analyseCustomAreaInput') {
+  const input = document.getElementById(inputId);
+  if (!input) return;
   const name = input.value.trim();
   if (!name) { showToast('Please enter a control area name.', 'warning'); return; }
   const id = 'custom_' + name.toLowerCase().replace(/\s+/g, '_') + '_' + Date.now();
-  addField({ id, name, label: name, placeholder: `Describe your implementation of ${name}…`, category: 'Custom' });
+  
+  const newCa = { id, name, label: name, placeholder: `Describe your implementation of ${name}…`, category: 'Custom' };
+  
+  // Persist it locally for this session
+  if (!state.controlAreas.find(c => c.id === id)) {
+    state.controlAreas.push(newCa);
+  }
+  
+  addField(newCa);
   input.value = '';
 }
 
@@ -742,6 +843,47 @@ function toggleResult(id) {
 }
 
 // ─── Utilities ────────────────────────────────────────────────────────────────
+function toggleCard(containerId, headerEl) {
+  const container = document.getElementById(containerId);
+  if (!container) return;
+  const chevron = headerEl.querySelector('.chevron-icon');
+  if (container.style.display === 'none') {
+    container.style.display = 'block';
+    headerEl.classList.remove('collapsed');
+    if (chevron) chevron.style.transform = 'rotate(0deg)';
+  } else {
+    container.style.display = 'none';
+    headerEl.classList.add('collapsed');
+    if (chevron) chevron.style.transform = 'rotate(180deg)';
+  }
+}
+
+async function updateTotalDocsCount() {
+  const el = document.getElementById('totalDocsCount');
+  if (!el) return;
+  if (!state.activeCollection) {
+    el.textContent = '0';
+    return;
+  }
+  try {
+    const data = await apiFetch(`/documents?collection_name=${encodeURIComponent(state.activeCollection)}`);
+    el.textContent = data.documents.length;
+  } catch (e) {
+    el.textContent = '0';
+  }
+}
+
+function renderBrdControlAreaCheckboxes() {
+  const container = document.getElementById('brdControlAreaCheckboxes');
+  if (!container) return;
+  container.innerHTML = getControlAreaIds().filter(id => id !== 'noise').map(id => `
+    <label style="display: flex; align-items: center; gap: 4px; font-size: 13px; background: var(--bg-hover); padding: 4px 8px; border-radius: 4px; border: 1px solid var(--border); cursor: pointer;">
+      <input type="checkbox" class="brd-area-checkbox" value="${id}" checked style="cursor:pointer; width:14px; height:14px; accent-color:var(--brand-500);" />
+      ${escHtml(getControlAreaName(id))}
+    </label>
+  `).join('');
+}
+
 function escHtml(str) {
   if (!str) return '';
   return String(str)
@@ -750,4 +892,507 @@ function escHtml(str) {
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&#39;');
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+//  COLLECTION DELETE
+// ══════════════════════════════════════════════════════════════════════════════
+
+async function deleteActiveCollection() {
+  if (!state.activeCollection) {
+    showToast('No collection selected.', 'warning');
+    return;
+  }
+  if (!confirm(`Delete collection "${state.activeCollection}" and ALL its data?\n\nThis cannot be undone.`)) return;
+
+  try {
+    await apiFetch(`/collections/${encodeURIComponent(state.activeCollection)}`, { method: 'DELETE' });
+    showToast(`Collection "${state.activeCollection}" deleted.`, 'success');
+    state.activeCollection = '';
+    await loadCollections();
+  } catch (err) {
+    showToast(`Delete failed: ${err.message}`, 'error');
+  }
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+//  BRD ANALYSIS TAB
+// ══════════════════════════════════════════════════════════════════════════════
+
+const brdState = {
+  selectedFiles: [],
+};
+
+// ─── BRD File handling ────────────────────────────────────────────────────────
+
+function handleBrdDragOver(e) {
+  e.preventDefault();
+  document.getElementById('brdUploadZone').classList.add('drag-over');
+}
+
+function handleBrdDragLeave(e) {
+  if (!e.currentTarget.contains(e.relatedTarget)) {
+    document.getElementById('brdUploadZone').classList.remove('drag-over');
+  }
+}
+
+function handleBrdDrop(e) {
+  e.preventDefault();
+  document.getElementById('brdUploadZone').classList.remove('drag-over');
+  const files = Array.from(e.dataTransfer.files).filter(f => f.name.toLowerCase().endsWith('.pdf'));
+  if (files.length === 0) { showToast('Only PDF files are supported.', 'warning'); return; }
+  addBrdFilesToQueue(files);
+}
+
+function handleBrdFileSelect(e) {
+  addBrdFilesToQueue(Array.from(e.target.files));
+  e.target.value = '';
+}
+
+function addBrdFilesToQueue(files) {
+  const existing = new Set(brdState.selectedFiles.map(f => f.name));
+  brdState.selectedFiles.push(...files.filter(f => !existing.has(f.name)));
+  renderBrdFileQueue();
+  document.getElementById('brdStoreBtn').disabled = brdState.selectedFiles.length === 0;
+}
+
+function removeBrdFromQueue(index) {
+  brdState.selectedFiles.splice(index, 1);
+  renderBrdFileQueue();
+  document.getElementById('brdStoreBtn').disabled = brdState.selectedFiles.length === 0;
+}
+
+function clearBrdQueue() {
+  brdState.selectedFiles = [];
+  renderBrdFileQueue();
+  document.getElementById('brdStoreBtn').disabled = true;
+}
+
+function renderBrdFileQueue() {
+  const container = document.getElementById('brdFileQueue');
+  if (brdState.selectedFiles.length === 0) { container.classList.add('hidden'); return; }
+  container.classList.remove('hidden');
+  container.innerHTML = brdState.selectedFiles.map((f, i) => `
+    <div class="file-item" id="brd-file-item-${i}">
+      <div class="file-icon">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+      </div>
+      <span class="file-name" title="${escHtml(f.name)}">${escHtml(f.name)}</span>
+      <span class="file-size">${formatBytes(f.size)}</span>
+      <span class="file-status queued" id="brd-file-status-${i}">Queued</span>
+      <button class="file-remove" onclick="removeBrdFromQueue(${i})" title="Remove">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+    </div>
+  `).join('');
+}
+
+// ─── BRD Store ────────────────────────────────────────────────────────────────
+
+async function storeBrdDocuments() {
+  if (!state.activeCollection) {
+    showToast('No collection selected. Please create or select a collection first.', 'warning');
+    return;
+  }
+  if (brdState.selectedFiles.length === 0) return;
+
+  const btn = document.getElementById('brdStoreBtn');
+  btn.disabled = true;
+  showLoading(
+    `Ingesting BRD into "${state.activeCollection}"…`,
+    'Parsing, embedding, and storing BRD chunks.'
+  );
+
+  const formData = new FormData();
+  brdState.selectedFiles.forEach(f => formData.append('files', f));
+  formData.append('collection_name', state.activeCollection);
+
+  try {
+    const results = await apiFetchRaw('/ingest-brd', { method: 'POST', body: formData });
+
+    results.forEach((r, i) => {
+      const statusEl = document.getElementById(`brd-file-status-${i}`);
+      if (statusEl) {
+        statusEl.className = `file-status ${r.status}`;
+        statusEl.textContent = r.status === 'success' ? `✓ ${r.chunks_stored} chunks` : `✗ ${r.message}`;
+      }
+    });
+
+    const succeeded = results.filter(r => r.status === 'success').length;
+    const failed    = results.filter(r => r.status !== 'success').length;
+    if (succeeded > 0) showToast(`${succeeded} BRD document(s) stored in "${state.activeCollection}".`, 'success');
+    if (failed > 0)    showToast(`${failed} BRD document(s) failed to ingest.`, 'error');
+
+    const failedNames = new Set(results.filter(r => r.status !== 'success').map(r => r.filename));
+    brdState.selectedFiles = brdState.selectedFiles.filter(f => failedNames.has(f.name));
+    renderBrdFileQueue();
+    await loadBrdDocuments();
+    updateTotalDocsCount();
+    loadClassifiedChunks('brd');
+  } catch (err) {
+    showToast(`BRD ingestion failed: ${err.message}`, 'error');
+  } finally {
+    hideLoading();
+    btn.disabled = brdState.selectedFiles.length === 0;
+  }
+}
+
+// ─── BRD Analysis ─────────────────────────────────────────────────────────────
+
+async function runBrdAnalysis() {
+  if (!state.activeCollection) {
+    showToast('No collection selected. Please select or create a collection first.', 'warning');
+    return;
+  }
+
+  const btn = document.getElementById('brdAnalyseBtn');
+  btn.disabled = true;
+  showLoading(
+    'Running BRD gap analysis…',
+    'Classifying chunks and analysing 7 control areas sequentially.'
+  );
+
+  const section   = document.getElementById('brdResultsSection');
+  const container = document.getElementById('brdResultsContainer');
+  const summaryEl = document.getElementById('brdResultsSummary');
+  const classEl   = document.getElementById('brdClassificationSummary');
+
+  section.classList.remove('hidden');
+  summaryEl.innerHTML = '<span class="summary-pill pill-partial">Processing…</span>';
+  container.innerHTML = '<div class="brd-processing-msg">Classifying and analysing… This may take several minutes.</div>';
+  classEl.classList.add('hidden');
+
+  section.scrollIntoView({ behavior: 'smooth', block: 'start' });
+
+  const selectedAreas = Array.from(document.querySelectorAll('.brd-area-checkbox:checked')).map(cb => cb.value);
+
+  try {
+    const data = await apiFetch('/analyse-brd', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        collection_name: state.activeCollection,
+        parallel: false,
+        active_areas: selectedAreas.length > 0 ? selectedAreas : undefined
+      }),
+    });
+
+    // Render classification summary
+    if (data.classification && data.classification.length > 0) {
+      renderClassificationSummary(data.classification);
+    }
+
+    // Render results
+    renderBrdResults(data.results);
+    showToast('BRD analysis complete!', 'success');
+
+  } catch (err) {
+    showToast(`BRD analysis failed: ${err.message}`, 'error');
+    container.innerHTML = `<div class="empty-state"><p style="color:var(--red)">${escHtml(err.message)}</p></div>`;
+  } finally {
+    hideLoading();
+    btn.disabled = false;
+  }
+}
+
+function renderClassificationSummary(classification) {
+  const el = document.getElementById('brdClassificationSummary');
+  el.classList.remove('hidden');
+  el.innerHTML = `
+    <div class="classification-card">
+      <h3 class="classification-title">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
+        Chunk Classification Summary
+      </h3>
+      <table class="classification-table">
+        <thead>
+          <tr>
+            <th>Control Area</th>
+            <th>Policy Chunks</th>
+            <th>BRD Chunks</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${classification.map(c => `
+            <tr>
+              <td>${escHtml(c.control_area_name)}</td>
+              <td class="chunk-count">${c.policy_chunk_count}</td>
+              <td class="chunk-count ${c.brd_chunk_count === 0 ? 'zero-count' : ''}">${c.brd_chunk_count}</td>
+            </tr>
+          `).join('')}
+        </tbody>
+      </table>
+    </div>`;
+}
+
+function renderBrdResults(results) {
+  const container = document.getElementById('brdResultsContainer');
+  const summaryEl = document.getElementById('brdResultsSummary');
+
+  // Summary pills
+  const counts = { compliant: 0, partial: 0, gap: 0 };
+  results.forEach(r => {
+    if (r.status === 'Compliant')             counts.compliant++;
+    else if (r.status === 'Partially Implemented') counts.partial++;
+    else                                           counts.gap++;
+  });
+
+  summaryEl.innerHTML = [
+    counts.compliant > 0 ? `<span class="summary-pill pill-compliant">✓ ${counts.compliant} Compliant</span>` : '',
+    counts.partial   > 0 ? `<span class="summary-pill pill-partial">~ ${counts.partial} Partial</span>` : '',
+    counts.gap       > 0 ? `<span class="summary-pill pill-noncompliant">✗ ${counts.gap} Gap</span>` : '',
+  ].join('');
+
+  container.innerHTML = results.map((r, i) => renderBrdResultCard(r, i)).join('');
+  if (results.length > 0) toggleBrdResult('brd-result-0');
+}
+
+function renderBrdResultCard(r, index) {
+  const id = `brd-result-${index}`;
+  let cardClass, badgeClass, badgeLabel;
+
+  if (r.status === 'Compliant') {
+    cardClass = 'compliant'; badgeClass = 'badge-compliant'; badgeLabel = '✓ Compliant';
+  } else if (r.status === 'Partially Implemented') {
+    cardClass = 'partial'; badgeClass = 'badge-partial'; badgeLabel = '~ Partially Implemented';
+  } else {
+    cardClass = 'noncompliant'; badgeClass = 'badge-noncompliant'; badgeLabel = '✗ Gap Identified';
+  }
+
+  const chunkInfo = `<div class="brd-chunk-info">
+    <span class="chunk-badge policy-badge">Policy: ${r.policy_chunk_count} chunks</span>
+    <span class="chunk-badge brd-badge">BRD: ${r.brd_chunk_count} chunks</span>
+  </div>`;
+
+  const summaryHtml = `
+    <div class="result-field-block">
+      <div class="result-section-title">Summary</div>
+      <p class="result-summary-text">${escHtml(r.summary || 'No summary available.')}</p>
+    </div>`;
+
+  let dynamicGapTitle = 'Gap Found';
+  if (r.status === 'Partially Implemented') dynamicGapTitle = 'Partial Implementation';
+  else if (r.status === 'Compliant') dynamicGapTitle = 'Compliant';
+
+  const gapHtml = r.gap_detail ? `
+    <div class="result-field-block result-gap-block">
+      <div class="result-section-title gap-title">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+        ${dynamicGapTitle}
+      </div>
+      <p class="result-gap-text">${escHtml(r.gap_detail)}</p>
+    </div>` : '';
+
+  const policyRefHtml = r.policy_references && r.policy_references.length > 0 ? `
+    <div class="result-field-block">
+      <div class="result-section-title">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+        Policy References
+      </div>
+      <ul class="result-list sections">
+        ${r.policy_references.map(ref => `<li>${escHtml(ref)}</li>`).join('')}
+      </ul>
+    </div>` : '';
+
+  const brdRefHtml = r.brd_references && r.brd_references.length > 0 ? `
+    <div class="result-field-block">
+      <div class="result-section-title">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+        BRD References
+      </div>
+      <ul class="result-list sections brd-ref-list">
+        ${r.brd_references.map(ref => `<li>${escHtml(ref)}</li>`).join('')}
+      </ul>
+    </div>` : '';
+
+  const errorHtml = r.error ? `<p class="result-error-note">Technical note: ${escHtml(r.error)}</p>` : '';
+  const bodyContent = chunkInfo + summaryHtml + gapHtml + policyRefHtml + brdRefHtml + errorHtml;
+
+  return `
+    <div class="result-card ${cardClass}" id="${id}-card">
+      <div class="result-header" id="${id}-header" onclick="toggleBrdResult('${id}')">
+        <div class="compliance-badge ${badgeClass}">${badgeLabel}</div>
+        <span class="result-area-name">${escHtml(r.control_area_name)}</span>
+        <svg class="result-chevron" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+      </div>
+      <div class="result-body" id="${id}-body">${bodyContent}</div>
+    </div>`;
+}
+
+function toggleBrdResult(id) {
+  const header = document.getElementById(`${id}-header`);
+  const body   = document.getElementById(`${id}-body`);
+  if (!header || !body) return;
+  const isExpanded = body.classList.contains('expanded');
+  body.classList.toggle('expanded', !isExpanded);
+  header.classList.toggle('expanded', !isExpanded);
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+//  CLASSIFIED CHUNKS (human-in-the-loop)
+// ══════════════════════════════════════════════════════════════════════════════
+
+function getControlAreaIds() {
+  return state.controlAreas.map(ca => ca.id).concat(['noise']);
+}
+
+function getControlAreaName(id) {
+  if (id === 'noise' || id === 'unclassified') return 'Noise / Unclassified';
+  const ca = state.controlAreas.find(c => c.id === id);
+  return ca ? ca.name : String(id);
+}
+
+async function loadClassifiedChunks(docType) {
+  if (!state.activeCollection) return;
+  const containerID = docType === 'policy' ? 'policyChunksContainer' : 'brdChunksContainer';
+  const cardID = docType === 'policy' ? 'policyChunksCard' : 'brdChunksCard';
+  const container = document.getElementById(containerID);
+  const card = document.getElementById(cardID);
+
+  try {
+    const data = await apiFetch(
+      `/classified-chunks?collection_name=${encodeURIComponent(state.activeCollection)}&doc_type=${docType}`
+    );
+
+    if (!data.chunks || data.chunks.length === 0) {
+      card.style.display = 'none';
+      return;
+    }
+
+    card.style.display = 'block';
+    renderClassifiedChunks(container, data.chunks, data.control_area_summary, docType);
+  } catch (err) {
+    card.style.display = 'block';
+    container.innerHTML = `<div class="empty-state"><p style="color:var(--red)">Failed to load chunks: ${err.message}</p></div>`;
+  }
+}
+
+function renderClassifiedChunks(container, chunks, summary, docType) {
+  // Group chunks by first control area
+  const groups = {};
+  getControlAreaIds().forEach(id => { groups[id] = []; });
+
+  chunks.forEach(c => {
+    if (c.control_areas && c.control_areas.length > 0) {
+      const primary = c.control_areas[0];
+      if (groups[primary]) {
+        groups[primary].push(c);
+      } else {
+        groups['noise'].push(c);
+      }
+    } else {
+      groups['noise'].push(c);
+    }
+  });
+
+  let html = '<div class="chunks-accordion">';
+
+  // Render each control area section
+  getControlAreaIds().forEach(areaId => {
+    // If we dynamically added a custom area during the session, it might not have an array initialized if done after load classified
+    const areaChunks = groups[areaId] || [];
+    const count = areaChunks.length;
+    const areaName = getControlAreaName(areaId);
+    const isExpanded = count > 0;
+
+    html += `
+      <div class="chunk-area-section">
+        <div class="chunk-area-header ${isExpanded ? 'expanded' : ''}" onclick="toggleChunkArea(this)">
+          <span class="chunk-area-name">${escHtml(areaName)}</span>
+          <span class="chunk-area-count ${count === 0 ? 'zero' : ''}">${count}</span>
+          <svg class="chunk-area-chevron" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+        </div>
+        <div class="chunk-area-body ${isExpanded ? 'expanded' : ''}">
+          ${areaChunks.length === 0
+            ? '<div class="empty-state" style="padding:16px"><p>No chunks classified here</p></div>'
+            : areaChunks.map(c => renderChunkCard(c, docType)).join('')
+          }
+        </div>
+      </div>`;
+  });
+
+  html += '</div>';
+  container.innerHTML = html;
+}
+
+function renderChunkCard(chunk, docType) {
+  const uuid = chunk.uuid;
+  const text = chunk.text || '';
+  const heading = chunk.heading || '';
+  const preview = text.length > 150 ? text.substring(0, 150) + '…' : text;
+  const conf = chunk.confidence || 0;
+  const confClass = conf >= 1.0 ? 'conf-verified' : conf >= 0.5 ? 'conf-high' : conf >= 0.3 ? 'conf-medium' : 'conf-low';
+  const confLabel = conf >= 1.0 ? 'Verified' : `${(conf * 100).toFixed(0)}%`;
+  const currentAreas = chunk.control_areas || [];
+
+  const optionsHtml = getControlAreaIds().filter(id => id !== 'noise').map(id =>
+    `<option value="${id}" ${currentAreas.includes(id) ? 'selected' : ''}>${escHtml(getControlAreaName(id))}</option>`
+  ).join('');
+
+  return `
+    <div class="chunk-card" id="chunk-${uuid}">
+      <div class="chunk-card-top">
+        ${heading ? `<span class="chunk-heading">${escHtml(heading)}</span>` : ''}
+        <span class="conf-badge ${confClass}">${confLabel}</span>
+      </div>
+      <p class="chunk-preview" id="chunk-text-${uuid}" onclick="toggleChunkText(this, '${uuid}')" title="Click to expand">${escHtml(preview)}</p>
+      <div class="chunk-card-actions">
+        <select class="chunk-area-select" id="chunk-select-${uuid}"
+                onchange="updateChunkClassification('${uuid}', this.value)"
+                title="Change control area">
+          <option value="">— Unclassified —</option>
+          ${optionsHtml}
+        </select>
+        <span class="chunk-source">${escHtml(chunk.source_file || '')}</span>
+      </div>
+    </div>`;
+}
+
+function toggleChunkText(el, uuid) {
+  const chunk = el;
+  if (chunk.dataset.expanded === 'true') {
+    // Collapse
+    const text = chunk.dataset.fullText;
+    chunk.textContent = text.length > 150 ? text.substring(0, 150) + '…' : text;
+    chunk.dataset.expanded = 'false';
+  } else {
+    // Expand — need to fetch full text from the rendered data
+    // The full text is stored in a data attribute on first expand
+    chunk.dataset.expanded = 'true';
+  }
+}
+
+function toggleChunkArea(header) {
+  const body = header.nextElementSibling;
+  const isExpanded = body.classList.contains('expanded');
+  body.classList.toggle('expanded', !isExpanded);
+  header.classList.toggle('expanded', !isExpanded);
+}
+
+async function updateChunkClassification(uuid, newAreaId) {
+  if (!state.activeCollection) return;
+
+  const controlAreas = newAreaId ? [newAreaId] : [];
+
+  try {
+    await apiFetch(`/chunks/${uuid}/classification`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        collection_name: state.activeCollection,
+        control_areas: controlAreas,
+      }),
+    });
+
+    showToast(`Chunk reassigned to ${newAreaId ? getControlAreaName(newAreaId) : 'Unclassified'}.`, 'success', 2000);
+
+    // Determine which doc type this chunk belongs to and reload
+    const card = document.getElementById(`chunk-${uuid}`);
+    if (card) {
+      const isPolicy = document.getElementById('policyChunksContainer')?.contains(card);
+      loadClassifiedChunks(isPolicy ? 'policy' : 'brd');
+    }
+  } catch (err) {
+    showToast(`Failed to update: ${err.message}`, 'error');
+  }
 }
