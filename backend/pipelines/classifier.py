@@ -1,12 +1,3 @@
-"""
-Control-area classifier — assigns text chunks to one of the 7 control areas
-using cosine similarity against anchor embeddings.
-
-Supports:
-  - Multiple anchors per control area (soft ensemble via max similarity)
-  - Margin-based dual assignment for genuinely ambiguous chunks
-  - Minimum-score filtering to discard irrelevant chunks
-"""
 from __future__ import annotations
 import logging
 from dataclasses import dataclass, field
@@ -22,7 +13,6 @@ logger = logging.getLogger(__name__)
 
 @dataclass
 class ControlAnchor:
-    """A control area with its precomputed anchor embeddings (one per phrase)."""
     id: str
     name: str
     phrases: list[str]                        # multiple anchor phrases
@@ -31,7 +21,6 @@ class ControlAnchor:
 
 @dataclass
 class ClassifiedChunk:
-    """A text chunk annotated with its assigned control-area ID(s)."""
     text: str
     source_file: str
     heading: str
@@ -149,16 +138,7 @@ CONTROL_AREA_ANCHORS: list[dict] = [
 
 
 def build_anchors(control_areas: list[dict] | None = None) -> list[ControlAnchor]:
-    """
-    Build anchor embeddings for each control area.
 
-    Args:
-        control_areas: optional list of dicts (only 'id' is used for lookup).
-                       If None, uses the built-in CONTROL_AREA_ANCHORS.
-
-    Returns:
-        list of ControlAnchor objects with precomputed vectors for all phrases.
-    """
     anchor_defs = []
     
     if control_areas is not None:
@@ -221,30 +201,11 @@ def classify_chunks(
     margin: float | None = None,
     min_score: float | None = None,
 ) -> dict[str, list[ClassifiedChunk]]:
-    """
-    Classify a list of embedded chunks into control areas.
-
-    Uses max-pooled similarity across all phrases of each control area,
-    so the best-matching phrase wins (no dilution from off-topic phrases).
-
-    Args:
-        chunks: list of dicts with keys 'text', 'source_file', 'heading', 'vector'.
-        anchors: precomputed ControlAnchor objects (with .vectors).
-        margin: if top-2 area scores differ by less than this, assign to both.
-                Defaults to settings.classification_margin (0.05).
-        min_score: minimum similarity to classify a chunk at all.
-                   Defaults to settings.classification_min_score (0.25).
-
-    Returns:
-        dict mapping control_area_id → list of ClassifiedChunk.
-    """
+    
     if margin is None:
         margin = settings.classification_margin
     if min_score is None:
         min_score = settings.classification_min_score
-
-    # Pre-normalise all phrase vectors for each anchor
-    # anchor_phrase_matrices[i] shape: (num_phrases_i, dim), row-normalised
     anchor_phrase_matrices = []
     for anchor in anchors:
         mat = np.array(anchor.vectors, dtype=np.float32)   # (P, dim)
@@ -264,8 +225,6 @@ def classify_chunks(
 
         chunk_normed = chunk_vec / chunk_norm   # (dim,)
 
-        # For each anchor, compute max similarity across all its phrases
-        # max-pool: use the phrase that is most similar to the chunk
         area_scores = np.array([
             float(np.max(mat @ chunk_normed))   # max over phrases
             for mat in anchor_phrase_matrices
@@ -335,12 +294,7 @@ def debug_classify_chunk(
     anchors: list[ControlAnchor],
     top_n: int = 7,
 ) -> list[dict]:
-    """
-    Classify a single piece of text and return per-area score breakdown.
-    Useful for debugging misclassifications.
 
-    Returns list of {area_id, area_name, max_score, best_phrase} sorted desc by score.
-    """
     from services.embedder import embed_query
     chunk_vec = np.array(embed_query(text), dtype=np.float32)
     chunk_norm = np.linalg.norm(chunk_vec)
@@ -367,21 +321,11 @@ def debug_classify_chunk(
     return results[:top_n]
 
 
-# ── Centroid-based classification (for BRD chunks) ────────────────────────────
 
 def compute_policy_centroids(
     policy_chunks_by_area: dict[str, list[dict]],
 ) -> dict[str, list[float]]:
-    """
-    Compute a normalized centroid vector for each control area from
-    human-verified policy chunks.
 
-    Args:
-        policy_chunks_by_area: {area_id: [{"vector": [...], ...}, ...]}
-
-    Returns:
-        {area_id: centroid_vector} — only for areas with at least one chunk.
-    """
     centroids = {}
     for area_id, chunks in policy_chunks_by_area.items():
         if area_id == "noise":
@@ -412,20 +356,7 @@ def classify_chunks_by_centroids(
     min_score: float | None = None,
     margin: float | None = None,
 ) -> dict[str, list[ClassifiedChunk]]:
-    """
-    Classify chunks using policy-derived centroids (one vector per area).
-    Used for BRD chunk classification.
-
-    Args:
-        chunks: list of dicts with 'text', 'source_file', 'heading', 'vector'.
-        centroids: {area_id: centroid_vector} from compute_policy_centroids().
-        area_names: optional {area_id: "Human Name"} for logging.
-        min_score: minimum similarity threshold.
-        margin: dual-assignment margin.
-
-    Returns:
-        dict mapping area_id → list[ClassifiedChunk].
-    """
+    
     if min_score is None:
         min_score = settings.classification_min_score
     if margin is None:

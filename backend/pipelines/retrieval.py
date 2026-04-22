@@ -13,6 +13,7 @@ from config import settings
 logger = logging.getLogger(__name__)
 
 _INJECTION_PATTERNS = [
+    # Prompt Injections
     r"ignore\s+(?:all\s+)?(?:previous|above|prior)\s+instructions?",
     r"disregard\s+(?:the\s+)?(?:system|above|previous)",
     r"you\s+are\s+now\s+(?:a\s+)?(?:different|new|another)",
@@ -21,6 +22,18 @@ _INJECTION_PATTERNS = [
     r"<\s*(?:system|assistant|user|human)\s*>",
     r"\[\s*(?:system|assistant|user|human)\s*\]",
     r"###\s*(?:system|assistant|instruction)",
+    # XSS (Cross-Site Scripting) Injections
+    r"<\s*script\b[^>]*>",
+    r"javascript\s*:",
+    r"\bon(?:error|load|mouseover|click|focus|blur|keydown|keyup)\s*=",
+    r"<\s*(?:iframe|object|embed|applet|svg|math|body)\b",
+    # Command / OS Injections
+    r"(?:;|\||&&|\|\||`|\$\()\s*(?:ls|cat|whoami|id|pwd|echo|bash|sh|ping|curl|wget|nc|awk|sed|grep|net|type)\b",
+    r"/(?:etc|bin|usr|var|tmp|dev)/(?:passwd|shadow|sh|bash|zsh|null)",
+    r"(?:cmd\.exe|powershell(\.exe)?|wscript\.exe|cscript\.exe)",
+    # SQL Injections
+    r"(?:UNION\s+ALL\s+SELECT|UNION\s+SELECT|SELECT\s+.*?\s+FROM|INSERT\s+INTO|UPDATE\s+.*?\s+SET|DELETE\s+FROM|DROP\s+(?:TABLE|DATABASE|INDEX|VIEW)|TRUNCATE\s+TABLE|EXEC(?:UTE)?\s+xp_)",
+    r"(?:'|\"|`)\s*(?:OR|AND)\s*(?:'|\"|`|-|\d+)\s*=\s*(?:'|\"|`|-|\d+)",
 ]
 _INJECTION_RE = re.compile("|".join(_INJECTION_PATTERNS), re.IGNORECASE)
 
