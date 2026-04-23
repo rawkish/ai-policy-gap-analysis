@@ -6,10 +6,13 @@ from __future__ import annotations
 import json
 import logging
 import re
-import httpx
+import os
+from groq import Groq
 from config import settings
 
 logger = logging.getLogger(__name__)
+
+MODEL = "llama-3.1-8b-instant"
 
 SYSTEM_PROMPT = """\
 You are a strict security compliance analyst reviewing application descriptions against policy documents.
@@ -177,52 +180,43 @@ def analyse_compliance(
     """
     prompt = build_prompt(control_area, description, policy_chunks)
 
-    payload = {
-        "model": settings.ollama_model,
-        "prompt": prompt,
-        "system": SYSTEM_PROMPT,
-        "stream": False,
-        "format": "json",
-        "options": {
-            "temperature": 0.1,
-            "num_predict": 1024,
-        },
-    }
-
     try:
-        with httpx.Client(timeout=600.0) as client:
-            response = client.post(
-                f"{settings.ollama_url}/api/generate",
-                json=payload,
-            )
-            response.raise_for_status()
-            data = response.json()
-            raw_text = data.get("response", "")
-            logger.debug("LLM raw response: %s", raw_text[:500])
-            result = _extract_json(raw_text)
-
-            status = _normalise_status(str(result.get("status", "")))
-            gap_detail = result.get("gap_detail")
-
-            
-            if status == "Compliant" or not gap_detail or str(gap_detail).lower() in ("null", "none", ""):
-                gap_detail = None
-
-            policy_ref = result.get("policy_reference", [])
-            if isinstance(policy_ref, str):
-                policy_ref = [policy_ref] if policy_ref else []
-
-            return {
-                "status":           status,
-                "summary":          result.get("summary", "No summary provided."),
-                "gap_detail":       gap_detail,
-                "policy_reference": policy_ref,
-            }
-
-    except httpx.ConnectError:
-        raise RuntimeError(
-            "Cannot connect to Ollama. Is it running? Try: docker compose up ollama"
+        api_key = settings.groq_api_key
+        if not api_key:
+            raise ValueError("GROQ_API_KEY is not set in environment variables.")
+        client = Groq(api_key=api_key)
+        
+        chat_completion = client.chat.completions.create(
+            messages=[
+                {"role": "system", "content": SYSTEM_PROMPT},
+                {"role": "user", "content": prompt}
+            ],
+            model=MODEL,  # using a fast llama3 model on Groq
+            response_format={"type": "json_object"},
+            temperature=0.1,
         )
+        
+        raw_text = chat_completion.choices[0].message.content or ""
+        logger.debug("LLM raw response: %s", raw_text[:500])
+        result = _extract_json(raw_text)
+
+        status = _normalise_status(str(result.get("status", "")))
+        gap_detail = result.get("gap_detail")
+
+        if status == "Compliant" or not gap_detail or str(gap_detail).lower() in ("null", "none", ""):
+            gap_detail = None
+
+        policy_ref = result.get("policy_reference", [])
+        if isinstance(policy_ref, str):
+            policy_ref = [policy_ref] if policy_ref else []
+
+        return {
+            "status":           status,
+            "summary":          result.get("summary", "No summary provided."),
+            "gap_detail":       gap_detail,
+            "policy_reference": policy_ref,
+        }
+
     except Exception as exc:
         logger.exception("LLM call failed: %s", exc)
         raise
@@ -252,73 +246,60 @@ def analyse_brd_compliance(
         brd_text=brd_text if brd_text.strip() else "(No BRD excerpts found for this control area.)",
     )
 
-    payload = {
-        "model": settings.ollama_model,
-        "prompt": prompt,
-        "system": BRD_SYSTEM_PROMPT,
-        "stream": False,
-        "format": "json",
-        "options": {
-            "temperature": 0.1,
-            "num_predict": 1024,
-        },
-    }
-
     try:
-        with httpx.Client(timeout=600.0) as client:
-            response = client.post(
-                f"{settings.ollama_url}/api/generate",
-                json=payload,
-            )
-            response.raise_for_status()
-            data = response.json()
-            raw_text = data.get("response", "")
-            logger.debug("BRD LLM raw response: %s", raw_text[:500])
-            result = _extract_json(raw_text)
+        api_key = settings.groq_api_key
+        if not api_key:
+            raise ValueError("GROQ_API_KEY is not set in environment variables.")
+        client = Groq(api_key=api_key)
 
-            status = _normalise_status(str(result.get("status", "")))
-            gap_detail = result.get("gap_detail")
-
-            if status == "Compliant" or not gap_detail or str(gap_detail).lower() in ("null", "none", ""):
-                gap_detail = None
-
-            policy_refs = result.get("policy_references", [])
-            if isinstance(policy_refs, str):
-                policy_refs = [policy_refs] if policy_refs else []
-
-            brd_refs = result.get("brd_references", [])
-            if isinstance(brd_refs, str):
-                brd_refs = [brd_refs] if brd_refs else []
-
-            return {
-                "status":            status,
-                "summary":           result.get("summary", "No summary provided."),
-                "gap_detail":        gap_detail,
-                "policy_references": policy_refs,
-                "brd_references":    brd_refs,
-            }
-
-    except httpx.ConnectError:
-        raise RuntimeError(
-            "Cannot connect to Ollama. Is it running? Try: docker compose up ollama"
+        chat_completion = client.chat.completions.create(
+            messages=[
+                {"role": "system", "content": BRD_SYSTEM_PROMPT},
+                {"role": "user", "content": prompt}
+            ],
+            model="llama-3.1-8b-instant",  
+            response_format={"type": "json_object"},
+            temperature=0.1,
         )
+
+        raw_text = chat_completion.choices[0].message.content or ""
+        logger.debug("BRD LLM raw response: %s", raw_text[:500])
+        result = _extract_json(raw_text)
+
+        status = _normalise_status(str(result.get("status", "")))
+        gap_detail = result.get("gap_detail")
+
+        if status == "Compliant" or not gap_detail or str(gap_detail).lower() in ("null", "none", ""):
+            gap_detail = None
+
+        policy_refs = result.get("policy_references", [])
+        if isinstance(policy_refs, str):
+            policy_refs = [policy_refs] if policy_refs else []
+
+        brd_refs = result.get("brd_references", [])
+        if isinstance(brd_refs, str):
+            brd_refs = [brd_refs] if brd_refs else []
+
+        return {
+            "status":            status,
+            "summary":           result.get("summary", "No summary provided."),
+            "gap_detail":        gap_detail,
+            "policy_references": policy_refs,
+            "brd_references":    brd_refs,
+        }
+
     except Exception as exc:
         logger.exception("BRD LLM call failed: %s", exc)
         raise
 
 
 def health_check() -> tuple[bool, str]:
-    """Returns (ok, detail)."""
+    """Returns (ok, detail) checking if Groq API key is set."""
     try:
-        with httpx.Client(timeout=5.0) as client:
-            r = client.get(f"{settings.ollama_url}/api/tags")
-            r.raise_for_status()
-            models = [m["name"] for m in r.json().get("models", [])]
-            if settings.ollama_model in models:
-                return True, f"Model {settings.ollama_model} available"
-            return False, (
-                f"Model {settings.ollama_model} not pulled. "
-                f"Available: {models}. Run: ollama pull {settings.ollama_model}"
-            )
+        api_key = settings.groq_api_key
+        if not api_key:
+            return False, "GROQ_API_KEY not found in environment variables"
+        
+        return True, "Groq API key is present"
     except Exception as exc:
         return False, str(exc)

@@ -15,6 +15,7 @@ class Settings(BaseSettings):
     
     ollama_url: str = Field(default="http://localhost:11434", env="OLLAMA_URL")
     ollama_model: str = Field(default="llama3.2:3b", env="OLLAMA_MODEL")
+    groq_api_key: str | None = Field(default=None, env="GROQ_API_KEY")
 
     
     embedding_model: str = Field(
