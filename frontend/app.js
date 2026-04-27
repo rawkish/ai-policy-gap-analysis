@@ -1286,7 +1286,7 @@ function renderClassifiedChunks(container, chunks, summary, docType) {
     const areaChunks = groups[areaId] || [];
     const count = areaChunks.length;
     const areaName = getControlAreaName(areaId);
-    const isExpanded = count > 0;
+    const isExpanded = false; // always start collapsed
 
     html += `
       <div class="chunk-area-section">
@@ -1308,15 +1308,28 @@ function renderClassifiedChunks(container, chunks, summary, docType) {
   container.innerHTML = html;
 }
 
+function _extractBodyText(rawText) {
+  // Strip the context prefix: "[file | Page N | Section]\nHeading\n\n" added by pdf_parser.
+  // The prefix ends at the first double-newline after the bracket line.
+  const doubleNl = rawText.indexOf('\n\n');
+  if (doubleNl !== -1 && rawText.startsWith('[')) {
+    return rawText.substring(doubleNl + 2).trim();
+  }
+  return rawText.trim();
+}
+
 function renderChunkCard(chunk, docType) {
   const uuid = chunk.uuid;
-  const text = chunk.text || '';
+  const rawText = chunk.text || '';
+  const bodyText = _extractBodyText(rawText);           // clean body, no metadata
   const heading = chunk.heading || '';
-  const preview = text.length > 150 ? text.substring(0, 150) + '…' : text;
+  const preview = bodyText.length > 160 ? bodyText.substring(0, 160) + '…' : bodyText;
   const conf = chunk.confidence || 0;
   const confClass = conf >= 1.0 ? 'conf-verified' : conf >= 0.5 ? 'conf-high' : conf >= 0.3 ? 'conf-medium' : 'conf-low';
   const confLabel = conf >= 1.0 ? 'Verified' : `${(conf * 100).toFixed(0)}%`;
   const currentAreas = chunk.control_areas || [];
+  // Escape for use inside a data attribute (double-quotes must be entity-encoded)
+  const fullTextAttr = bodyText.replace(/&/g,'&amp;').replace(/"/g,'&quot;');
 
   const optionsHtml = getControlAreaIds().filter(id => id !== 'noise').map(id =>
     `<option value="${id}" ${currentAreas.includes(id) ? 'selected' : ''}>${escHtml(getControlAreaName(id))}</option>`
@@ -1328,7 +1341,12 @@ function renderChunkCard(chunk, docType) {
         ${heading ? `<span class="chunk-heading">${escHtml(heading)}</span>` : ''}
         <span class="conf-badge ${confClass}">${confLabel}</span>
       </div>
-      <p class="chunk-preview" id="chunk-text-${uuid}" onclick="toggleChunkText(this, '${uuid}')" title="Click to expand">${escHtml(preview)}</p>
+      <p class="chunk-preview"
+         id="chunk-text-${uuid}"
+         data-full-text="${fullTextAttr}"
+         data-expanded="false"
+         onclick="toggleChunkText(this)"
+         title="Click to expand full text">${escHtml(preview)}</p>
       <div class="chunk-card-actions">
         <select class="chunk-area-select" id="chunk-select-${uuid}"
                 onchange="updateChunkClassification('${uuid}', this.value)"
@@ -1341,17 +1359,18 @@ function renderChunkCard(chunk, docType) {
     </div>`;
 }
 
-function toggleChunkText(el, uuid) {
-  const chunk = el;
-  if (chunk.dataset.expanded === 'true') {
-    // Collapse
-    const text = chunk.dataset.fullText;
-    chunk.textContent = text.length > 150 ? text.substring(0, 150) + '…' : text;
-    chunk.dataset.expanded = 'false';
+function toggleChunkText(el) {
+  const fullText = el.dataset.fullText || '';
+  if (el.dataset.expanded === 'true') {
+    // Collapse back to preview
+    el.textContent = fullText.length > 160 ? fullText.substring(0, 160) + '…' : fullText;
+    el.dataset.expanded = 'false';
+    el.title = 'Click to expand full text';
   } else {
-    // Expand — need to fetch full text from the rendered data
-    // The full text is stored in a data attribute on first expand
-    chunk.dataset.expanded = 'true';
+    // Expand to full clean body text
+    el.textContent = fullText || '(no text)';
+    el.dataset.expanded = 'true';
+    el.title = 'Click to collapse';
   }
 }
 

@@ -597,6 +597,12 @@ body {
   align-items: start;
 }
 
+/* Grid children MUST have min-width: 0 or content can blow out the column */
+.analyse-main {
+  min-width: 0;
+  overflow: hidden;
+}
+
 @media (max-width: 900px) {
   .analyse-layout { grid-template-columns: 1fr; }
 }
@@ -1377,6 +1383,8 @@ body {
   display: flex;
   flex-direction: column;
   gap: 2px;
+  overflow: hidden;          /* never let inner content push the accordion wide */
+  min-width: 0;
 }
 
 .chunk-area-section {
@@ -1512,6 +1520,9 @@ body {
   margin: 0 0 8px 0;
   cursor: pointer;
   transition: color var(--transition);
+  overflow-wrap: break-word;
+  word-break: break-word;
+  white-space: pre-wrap;
 }
 
 .chunk-preview:hover {
